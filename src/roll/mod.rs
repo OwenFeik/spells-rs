@@ -1,5 +1,8 @@
 
-#[derive(Debug)]
+#[cfg(test)]
+mod test;
+
+#[derive(Debug, PartialEq, Eq)]
 enum Token {
     Natural(u32),
     Roll(u32, u32),
@@ -56,10 +59,7 @@ impl Token {
     }
 }
 
-#[derive(Debug)]
-pub struct Roll(Vec<Token>);
-
-pub fn tokenise(input: &str) -> Roll {
+fn tokenise(input: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
     
     let mut current: Option<Token> = None;
@@ -81,5 +81,5 @@ pub fn tokenise(input: &str) -> Roll {
         }
     }
 
-    Roll(tokens)
+    tokens
 }
