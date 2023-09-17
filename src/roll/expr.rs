@@ -1,11 +1,15 @@
 use super::token::Token;
 
 /// Grammar
-/// E := (E) | T + E | T - E | T
-/// T := T * F | T / F | T ^ F | F
-/// F := Ra | Rd | Rs | RkN | R | N 
+/// E := T + E | T - E | T
+/// T := T * T | T / F | T ^ F | F
+/// F := Ra | Rd | Rs | RkN | R | N | (E)
 /// R := NdN | dN
 /// N := NN | [0-9]
+///
+/// T := T * F
+///
+/// (3 + 2) / (5 + 6)
 
 enum Expr {
     Add(Box<Expr>, Box<Expr>),
@@ -46,10 +50,10 @@ fn parens(input: &[Token]) -> ParseResult {
 }
 
 fn add(input: &[Token]) -> ParseResult {
-    let (term, rest) = term(input)?;
+    let (expr, rest) = expr(input)?;
     if let (Some(Token::Plus), rest) = parts(rest) {
-        let (expr, rest) = expr(rest)?;
-        Some((Expr::Add(Box::new(term), Box::new(expr)), rest))
+        let (term, rest) = term(rest)?;
+        Some((Expr::Add(Box::new(expr), Box::new(expr)), rest))
     } else {
         None
     }
@@ -66,20 +70,15 @@ fn sub(input: &[Token]) -> ParseResult {
 }
 
 fn expr(input: &[Token]) -> ParseResult {
-    parens(input).or_else(|| add(input)).or_else(|| sub(input)).or_else(|| term(input))
+    parens(input)
+        .or_else(|| add(input))
+        .or_else(|| sub(input))
+        .or_else(|| term(input))
 }
 
-fn mul(input: &[Token]) -> ParseResult {
-    
-}
+fn term(input: &[Token]) -> ParseResult {}
 
-fn term(input: &[Token]) -> ParseResult {
-
-}
-
-fn factor(input: &[Token]) -> ParseResult {
-
-}
+fn factor(input: &[Token]) -> ParseResult {}
 
 fn parse(input: &[Token]) -> Option<(&[Token], Expr)> {
     let Some(first) = input.first() else {
@@ -97,7 +96,7 @@ fn parse(input: &[Token]) -> Option<(&[Token], Expr)> {
             } else {
                 None
             }
-        },
+        }
         &Token::ParenClose => None,
         &Token::Plus => todo!(),
         &Token::Minus => todo!(),
@@ -108,6 +107,5 @@ fn parse(input: &[Token]) -> Option<(&[Token], Expr)> {
         &Token::Advantage => todo!(),
         &Token::Disadvantage => todo!(),
         &Token::Sort => todo!(),
-        
     }
 }
