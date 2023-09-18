@@ -7,10 +7,8 @@ use super::token::Token;
 /// R := NdN | dN
 /// N := NN | [0-9]
 ///
-/// T := T * F
-///
-/// (3 + 2) / (5 + 6)
 
+#[derive(Debug, PartialEq, Eq)]
 enum Expr {
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
@@ -30,7 +28,11 @@ fn head(input: &[Token]) -> Option<&Token> {
 }
 
 fn tail(input: &[Token]) -> &[Token] {
-    &input[1..]
+    if input.len() < 2 {
+        &[]
+    } else {
+        &input[1..]
+    }
 }
 
 fn parts(input: &[Token]) -> (Option<&Token>, &[Token]) {
@@ -50,10 +52,10 @@ fn parens(input: &[Token]) -> ParseResult {
 }
 
 fn add(input: &[Token]) -> ParseResult {
-    let (expr, rest) = expr(input)?;
+    let (term, rest) = term(input)?;
     if let (Some(Token::Plus), rest) = parts(rest) {
-        let (term, rest) = term(rest)?;
-        Some((Expr::Add(Box::new(expr), Box::new(expr)), rest))
+        let (expr, rest) = expr(rest)?;
+        Some((Expr::Add(Box::new(term), Box::new(expr)), rest))
     } else {
         None
     }
@@ -61,7 +63,7 @@ fn add(input: &[Token]) -> ParseResult {
 
 fn sub(input: &[Token]) -> ParseResult {
     let (term, rest) = term(input)?;
-    if let (Some(Token::Plus), rest) = parts(rest) {
+    if let (Some(Token::Minus), rest) = parts(rest) {
         let (expr, rest) = expr(rest)?;
         Some((Expr::Sub(Box::new(term), Box::new(expr)), rest))
     } else {
@@ -70,42 +72,85 @@ fn sub(input: &[Token]) -> ParseResult {
 }
 
 fn expr(input: &[Token]) -> ParseResult {
-    parens(input)
-        .or_else(|| add(input))
-        .or_else(|| sub(input))
-        .or_else(|| term(input))
+    add(input).or_else(|| sub(input)).or_else(|| term(input))
 }
 
-fn term(input: &[Token]) -> ParseResult {}
+fn roll(input: &[Token]) -> ParseResult {
+    if let &Token::Roll(q, d) = head(input)? {
+        Some((Expr::Roll(q, d), tail(input)))
+    } else {
+        None
+    }
+}
 
-fn factor(input: &[Token]) -> ParseResult {}
+fn natural(input: &[Token]) -> ParseResult {
+    if let &Token::Natural(n) = head(input)? {
+        Some((Expr::Natural(n), tail(input)))
+    } else {
+        None
+    }
+}
 
-fn parse(input: &[Token]) -> Option<(&[Token], Expr)> {
-    let Some(first) = input.first() else {
-        return None;
-    };
+fn term(input: &[Token]) -> ParseResult {
+    roll(input)
+        .or_else(|| natural(input))
+        .or_else(|| parens(input))
+}
 
-    let rest = tail(input);
-    match first {
-        &Token::Natural(n) => Some((rest, Expr::Natural(n))),
-        &Token::Roll(q, d) => Some((rest, Expr::Roll(q, d))),
-        &Token::ParenOpen => {
-            let (rest, expr) = parse(rest)?;
-            if matches!(rest.first(), Some(Token::ParenClose)) {
-                Some((tail(rest), expr))
-            } else {
-                None
-            }
-        }
-        &Token::ParenClose => None,
-        &Token::Plus => todo!(),
-        &Token::Minus => todo!(),
-        &Token::Times => todo!(),
-        &Token::Divide => todo!(),
-        &Token::Exp => todo!(),
-        &Token::Keep => todo!(),
-        &Token::Advantage => todo!(),
-        &Token::Disadvantage => todo!(),
-        &Token::Sort => todo!(),
+fn parse(input: &[Token]) -> ParseResult {
+    expr(input)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_parse_addition() {
+        let (expr, rest) = parse(&[Token::Natural(2), Token::Plus, Token::Natural(3)]).unwrap();
+        assert_eq!(rest, Vec::new());
+        assert_eq!(
+            expr,
+            Expr::Add(Box::new(Expr::Natural(2)), Box::new(Expr::Natural(3)))
+        );
+    }
+
+    #[test]
+    fn test_parse_repeated_addition() {
+        let (expr, rest) = parse(&[
+            Token::Natural(2),
+            Token::Plus,
+            Token::Natural(3),
+            Token::Plus,
+            Token::Natural(4),
+        ])
+        .unwrap();
+        assert_eq!(rest, Vec::new());
+
+        let rhs = Expr::Add(Box::new(Expr::Natural(3)), Box::new(Expr::Natural(4)));
+        assert_eq!(expr, Expr::Add(Box::new(Expr::Natural(2)), Box::new(rhs)));
+    }
+
+    #[test]
+    fn test_addition_subtraction() {
+        let (expr, rest) = parse(&[
+            Token::Natural(3),
+            Token::Minus,
+            Token::Natural(4),
+            Token::Plus,
+            Token::Natural(5),
+        ])
+        .unwrap();
+        assert_eq!(rest, Vec::new());
+        assert_eq!(
+            expr,
+            Expr::Add(
+                Box::new(Expr::Sub(
+                    Box::new(Expr::Natural(3)),
+                    Box::new(Expr::Natural(4))
+                )),
+                Box::new(Expr::Natural(3)),
+            )
+        )
     }
 }
