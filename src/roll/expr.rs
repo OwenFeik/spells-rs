@@ -1,7 +1,8 @@
 use super::token::Token;
 
 /// Grammar
-/// E := T + E | T - E | T
+/// expr := term addsub | term
+/// addsub := + expr addsub | - expr addsub | eps
 /// T := T * T | T / F | T ^ F | F
 /// F := Ra | Rd | Rs | RkN | R | N | (E)
 /// R := NdN | dN
@@ -23,6 +24,16 @@ enum Expr {
     Natural(u32),
 }
 
+impl Expr {
+    fn add(lhs: Expr, rhs: Expr) -> Expr {
+        Expr::Add(Box::new(lhs), Box::new(rhs))
+    }
+
+    fn sub(lhs: Expr, rhs: Expr) -> Expr {
+        Expr::Sub(Box::new(lhs), Box::new(rhs))
+    }
+}
+
 fn head(input: &[Token]) -> Option<&Token> {
     input.first()
 }
@@ -39,6 +50,15 @@ fn parts(input: &[Token]) -> (Option<&Token>, &[Token]) {
     (head(input), tail(input))
 }
 
+fn eat(input: &[Token], token: Token) -> Option<&[Token]> {
+    let (head, tail) = parts(input);
+    if token == *head? {
+        Some(tail)
+    } else {
+        None
+    }
+}
+
 type ParseResult<'a> = Option<(Expr, &'a [Token])>;
 
 fn parens(input: &[Token]) -> ParseResult {
@@ -51,28 +71,27 @@ fn parens(input: &[Token]) -> ParseResult {
     None
 }
 
-fn add(input: &[Token]) -> ParseResult {
-    let (term, rest) = term(input)?;
-    if let (Some(Token::Plus), rest) = parts(rest) {
-        let (expr, rest) = expr(rest)?;
-        Some((Expr::Add(Box::new(term), Box::new(expr)), rest))
+fn addsub_inner(lhs: Expr, input: &[Token]) -> ParseResult {
+    if input.is_empty() {
+        Some((lhs, input))
+    } else if let Some(rest) = eat(input, Token::Plus) {
+        let (rhs, rest) = expr(rest)?;
+        addsub_inner(Expr::add(lhs, rhs), rest)
+    } else if let Some(rest) = eat(input, Token::Minus) {
+        let (rhs, rest) = expr(rest)?;
+        addsub_inner(Expr::sub(lhs, rhs), rest)
     } else {
         None
     }
 }
 
-fn sub(input: &[Token]) -> ParseResult {
-    let (term, rest) = term(input)?;
-    if let (Some(Token::Minus), rest) = parts(rest) {
-        let (expr, rest) = expr(rest)?;
-        Some((Expr::Sub(Box::new(term), Box::new(expr)), rest))
-    } else {
-        None
-    }
+fn addsub(input: &[Token]) -> ParseResult {
+    let (lhs, rest) = term(input)?;
+    addsub_inner(lhs, rest)
 }
 
 fn expr(input: &[Token]) -> ParseResult {
-    add(input).or_else(|| sub(input)).or_else(|| term(input))
+    addsub(input).or_else(|| term(input))
 }
 
 fn roll(input: &[Token]) -> ParseResult {
@@ -149,7 +168,7 @@ mod test {
                     Box::new(Expr::Natural(3)),
                     Box::new(Expr::Natural(4))
                 )),
-                Box::new(Expr::Natural(3)),
+                Box::new(Expr::Natural(5)),
             )
         )
     }
