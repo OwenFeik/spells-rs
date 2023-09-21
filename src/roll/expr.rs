@@ -1,10 +1,11 @@
 use super::token::Token;
 
 /// Grammar
-/// expr := term addsub | term
-/// addsub := + expr addsub | - expr addsub | eps
-/// T := T * T | T / F | T ^ F | F
-/// F := Ra | Rd | Rs | RkN | R | N | (E)
+/// expr := term { binary term }
+/// term := factor | ( expr ) | unary term
+/// binary := + | - | * | / | ^
+/// unary := -
+/// factor := Ra | Rd | Rs | RkN | R | N
 /// R := NdN | dN
 /// N := NN | [0-9]
 ///
@@ -50,7 +51,7 @@ fn parts(input: &[Token]) -> (Option<&Token>, &[Token]) {
     (head(input), tail(input))
 }
 
-fn eat(input: &[Token], token: Token) -> Option<&[Token]> {
+fn expect(input: &[Token], token: Token) -> Option<&[Token]> {
     let (head, tail) = parts(input);
     if token == *head? {
         Some(tail)
@@ -59,7 +60,67 @@ fn eat(input: &[Token], token: Token) -> Option<&[Token]> {
     }
 }
 
-type ParseResult<'a> = Option<(Expr, &'a [Token])>;
+enum Operations {
+    Sentinel,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Exp,
+    Neg,
+}
+
+type ParseErr = ();
+type ParseResult<T> = Result<T, ParseErr>;
+
+struct Parser<'a> {
+    input: &'a [Token],
+    operators: Vec<Token>,
+    operands: Vec<Expr>,
+}
+
+impl<'a> Parser<'a> {
+    fn new(input: &[Token]) -> Self {
+        Self {
+            input,
+            operators: Vec::new(),
+            operands: Vec::new(),
+        }
+    }
+
+    fn parse(&mut self, input: &[Token]) -> Option<Expr> {}
+
+    fn expr(&mut self) -> ParseResult<()> {}
+
+    fn term(&mut self, input: &[Token]) -> ParseResult<()> {
+        match self.next()? {
+            &Token::Natural(n) => self.operands.push(Expr::Natural(n)),
+            &Token::Roll(q, d) => self.operands.push(Expr::Roll(q, d)),
+            &Token::ParenOpen => {}
+            &Token::ParenClose => todo!(),
+            &Token::Plus => todo!(),
+            &Token::Minus => todo!(),
+            &Token::Times => todo!(),
+            &Token::Divide => todo!(),
+            &Token::Exp => todo!(),
+            &Token::Keep => todo!(),
+            &Token::Advantage => todo!(),
+            &Token::Disadvantage => todo!(),
+            &Token::Sort => todo!(),
+        };
+
+        Ok(())
+    }
+
+    fn next(&mut self) -> ParseResult<&Token> {
+        if let Some(tok) = self.input.first() {
+            self.input = &self.input[1..];
+            Ok(tok)
+        } else {
+            Err(())
+        }
+    }
+}
 
 fn parens(input: &[Token]) -> ParseResult {
     if let (Some(Token::ParenOpen), rest) = parts(input) {
@@ -74,10 +135,10 @@ fn parens(input: &[Token]) -> ParseResult {
 fn addsub_inner(lhs: Expr, input: &[Token]) -> ParseResult {
     if input.is_empty() {
         Some((lhs, input))
-    } else if let Some(rest) = eat(input, Token::Plus) {
+    } else if let Some(rest) = expect(input, Token::Plus) {
         let (rhs, rest) = expr(rest)?;
         addsub_inner(Expr::add(lhs, rhs), rest)
-    } else if let Some(rest) = eat(input, Token::Minus) {
+    } else if let Some(rest) = expect(input, Token::Minus) {
         let (rhs, rest) = expr(rest)?;
         addsub_inner(Expr::sub(lhs, rhs), rest)
     } else {
@@ -135,7 +196,7 @@ mod test {
     }
 
     #[test]
-    fn test_parse_repeated_addition() {
+    fn test_parse_repexpected_addition() {
         let (expr, rest) = parse(&[
             Token::Natural(2),
             Token::Plus,
