@@ -2,13 +2,14 @@ use super::token::Token;
 
 /// Grammar
 /// expr := term { binary term }
-/// term := factor | ( expr ) | unary term
-/// binary := + | - | * | / | ^
+/// term := factor | ( expr ) | unary-prefix term | term unary-suffix
+/// binary := + | - | * | / | ^ | k
 /// unary := -
-/// factor := Ra | Rd | Rs | RkN | R | N
+/// factor := Ra | Rd | Rs | R | N
 /// R := NdN | dN
 /// N := NN | [0-9]
 ///
+/// TODO unary-suffix
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
@@ -21,7 +22,7 @@ pub enum Expr {
     Adv(Box<Expr>),
     DisAdv(Box<Expr>),
     Sort(Box<Expr>),
-    Keep(Box<Expr>),
+    Keep(Box<Expr>, Box<Expr>),
     Roll(u32, u32),
     Natural(u32),
 }
@@ -47,33 +48,24 @@ impl Expr {
         Expr::Exp(Box::new(lhs), Box::new(rhs))
     }
 
+    fn keep(lhs: Expr, rhs: Expr) -> Expr {
+        Expr::Keep(Box::new(lhs), Box::new(rhs))
+    }
+
     fn neg(operand: Expr) -> Expr {
         Expr::Neg(Box::new(operand))
     }
-}
 
-fn head(input: &[Token]) -> Option<&Token> {
-    input.first()
-}
-
-fn tail(input: &[Token]) -> &[Token] {
-    if input.len() < 2 {
-        &[]
-    } else {
-        &input[1..]
+    fn adv(operand: Expr) -> Expr {
+        Expr::Adv(Box::new(operand))
     }
-}
 
-fn parts(input: &[Token]) -> (Option<&Token>, &[Token]) {
-    (head(input), tail(input))
-}
+    fn disadv(operand: Expr) -> Expr {
+        Expr::DisAdv(Box::new(operand))
+    }
 
-fn expect(input: &[Token], token: Token) -> Option<&[Token]> {
-    let (head, tail) = parts(input);
-    if token == *head? {
-        Some(tail)
-    } else {
-        None
+    fn sort(operand: Expr) -> Expr {
+        Expr::Sort(Box::new(operand))
     }
 }
 
@@ -93,6 +85,10 @@ enum Operator {
     Div,
     Exp,
     Neg,
+    Keep,
+    Adv,
+    DisAdv,
+    Sort,
 }
 
 impl Operator {
@@ -104,7 +100,11 @@ impl Operator {
             Operator::Mul => 2,
             Operator::Div => 2,
             Operator::Exp => 3,
-            Operator::Neg => 4,
+            Operator::Neg => 5,
+            Operator::Keep => 4,
+            Operator::Adv => 5,
+            Operator::DisAdv => 5,
+            Operator::Sort => 5,
         }
     }
 
@@ -117,6 +117,10 @@ impl Operator {
             Operator::Div => true,
             Operator::Exp => false,
             Operator::Neg => false,
+            Operator::Keep => true,
+            Operator::Adv => false,
+            Operator::DisAdv => false,
+            Operator::Sort => false,
         }
     }
 
@@ -129,31 +133,38 @@ impl Operator {
             Operator::Div => true,
             Operator::Exp => true,
             Operator::Neg => false,
+            Operator::Keep => true,
+            Operator::Adv => false,
+            Operator::DisAdv => false,
+            Operator::Sort => false,
         }
     }
 
     fn binary(self, lhs: Expr, rhs: Expr) -> ParseResult<Expr> {
         match self {
-            Operator::Sentinel => err("Sentinel is not a binary operator."),
             Operator::Add => Ok(Expr::add(lhs, rhs)),
             Operator::Sub => Ok(Expr::sub(lhs, rhs)),
             Operator::Mul => Ok(Expr::mul(lhs, rhs)),
             Operator::Div => Ok(Expr::div(lhs, rhs)),
             Operator::Exp => Ok(Expr::exp(lhs, rhs)),
-            Operator::Neg => err("Neg is not a binary operator."),
+            Operator::Keep => Ok(Expr::keep(lhs, rhs)),
+            _ => err(format!("{self:?} is not a binary operator.")),
         }
     }
 
     fn is_unary(&self) -> bool {
-        match self {
-            Operator::Neg => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Operator::Neg | Operator::Keep | Operator::Adv | Operator::DisAdv | Operator::Sort
+        )
     }
 
     fn unary(self, operand: Expr) -> ParseResult<Expr> {
         match self {
             Operator::Neg => Ok(Expr::neg(operand)),
+            Operator::Adv => Ok(Expr::adv(operand)),
+            Operator::DisAdv => Ok(Expr::disadv(operand)),
+            Operator::Sort => Ok(Expr::sort(operand)),
             _ => err(format!("{self:?} is not a unary operator.")),
         }
     }
@@ -180,10 +191,10 @@ impl Operator {
             Token::Times => Ok(Self::Mul),
             Token::Divide => Ok(Self::Div),
             Token::Exp => Ok(Self::Exp),
-            Token::Keep => err("k is not an operator."),
-            Token::Advantage => err("a is not an operator."),
-            Token::Disadvantage => err("d is not an operator."),
-            Token::Sort => err("s is not an operator."),
+            Token::Keep => Ok(Self::Keep),
+            Token::Advantage => Ok(Self::Adv),
+            Token::Disadvantage => Ok(Self::DisAdv),
+            Token::Sort => Ok(Self::Sort),
         }
     }
 }
@@ -206,15 +217,15 @@ impl<'a> Parser<'a> {
     fn parse(mut self) -> ParseResult<Expr> {
         self.operators.push(Operator::Sentinel);
         self.expr()?;
-        // if self.input.is_empty() {
-        if let Some(expr) = self.operands.pop() {
-            Ok(expr)
+        if self.input.is_empty() {
+            if let Some(expr) = self.operands.pop() {
+                Ok(expr)
+            } else {
+                err("Operand stack empty at parse conclusion.")
+            }
         } else {
-            err("Operand stack empty at parse conclusion.")
+            err("Input not consumed.")
         }
-        // } else {
-        //     err("Input not consumed.")
-        // }
     }
 
     fn expr(&mut self) -> ParseResult<()> {
@@ -434,5 +445,31 @@ mod test {
         } else {
             panic!();
         }
+    }
+
+    #[test]
+    fn test_roll_operators() {
+        let expr = parse(&[
+            Token::Roll(1, 20),
+            Token::Advantage,
+            Token::Plus,
+            Token::Roll(1, 4),
+            Token::Disadvantage,
+            Token::Plus,
+            Token::Roll(10, 8),
+            Token::Keep,
+            Token::Natural(8),
+            Token::Sort,
+        ])
+        .unwrap();
+
+        // d20a + d4d + 10d8k8s = ((d20a) + (d4d)) + ((10d8k8)s)
+        assert_eq!(
+            expr,
+            Expr::add(
+                Expr::add(Expr::adv(Expr::Roll(1, 20)), Expr::disadv(Expr::Roll(1, 4))),
+                Expr::sort(Expr::keep(Expr::Roll(10, 8), Expr::Natural(8)))
+            )
+        );
     }
 }
