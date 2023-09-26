@@ -1,4 +1,4 @@
-#![feature(inherent_associated_types)]
+#![feature(let_chains)]
 
 mod roll;
 
