@@ -2,14 +2,13 @@ use super::token::Token;
 
 /// Grammar
 /// expr := term { binary term }
-/// term := factor | ( expr ) | unary-prefix term | term unary-suffix
+/// term := factor | ( expr ) | unary-prefix term | term unary-postfix
 /// binary := + | - | * | / | ^ | k
-/// unary := -
-/// factor := Ra | Rd | Rs | R | N
+/// unary-prefix := -
+/// unary-postfix := a | d | s | k
+/// factor := R | N
 /// R := NdN | dN
 /// N := NN | [0-9]
-///
-/// TODO unary-suffix
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
@@ -99,12 +98,12 @@ impl Operator {
             Operator::Sub => 1,
             Operator::Mul => 2,
             Operator::Div => 2,
-            Operator::Exp => 3,
-            Operator::Neg => 5,
-            Operator::Keep => 4,
-            Operator::Adv => 5,
-            Operator::DisAdv => 5,
-            Operator::Sort => 5,
+            Operator::Exp => 4,
+            Operator::Neg => 3,
+            Operator::Keep => 5,
+            Operator::Adv => 3,
+            Operator::DisAdv => 3,
+            Operator::Sort => 3,
         }
     }
 
@@ -155,8 +154,12 @@ impl Operator {
     fn is_unary(&self) -> bool {
         matches!(
             self,
-            Operator::Neg | Operator::Keep | Operator::Adv | Operator::DisAdv | Operator::Sort
+            Operator::Neg | Operator::Adv | Operator::DisAdv | Operator::Sort
         )
+    }
+
+    fn is_unary_postfix(&self) -> bool {
+        matches!(self, Operator::Adv | Operator::DisAdv | Operator::Sort)
     }
 
     fn unary(self, operand: Expr) -> ParseResult<Expr> {
@@ -173,7 +176,7 @@ impl Operator {
         if left.is_binary() && right.is_binary() {
             (left.precedence() > right.precedence())
                 || (left.left_associative() && left.precedence() == right.precedence())
-        } else if left.is_unary() && right.is_binary() {
+        } else if left.is_unary() && right.is_binary() || right.is_unary_postfix() {
             left.precedence() >= right.precedence()
         } else {
             false
@@ -247,7 +250,7 @@ impl<'a> Parser<'a> {
     }
 
     fn term(&mut self) -> ParseResult<()> {
-        match *self.next()? {
+        let res = match *self.next()? {
             Token::Natural(n) => {
                 self.operands.push(Expr::Natural(n));
                 Ok(())
@@ -276,7 +279,15 @@ impl<'a> Parser<'a> {
             Token::Advantage => err("a unexpected."),
             Token::Disadvantage => err("d unexpected."),
             Token::Sort => err("s unexpected."),
+        };
+        res?;
+
+        while let Some(Ok(op)) = self.peek().map(Operator::from) && op.is_unary_postfix() {
+            self.push_operator(op);
+            self.next()?; // throw away token
         }
+
+        Ok(())
     }
 
     fn next(&mut self) -> ParseResult<&Token> {
@@ -340,7 +351,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-pub fn parse(input: &[Token]) -> Result<Expr, String> {
+pub fn lex(input: &[Token]) -> Result<Expr, String> {
     Parser::new(input).parse()
 }
 
@@ -350,16 +361,16 @@ mod test {
 
     #[test]
     fn test_parse_addition() {
-        let expr = parse(&[Token::Natural(2), Token::Plus, Token::Natural(3)]).unwrap();
+        let expr = lex(&[Token::Natural(2), Token::Plus, Token::Natural(3)]).unwrap();
         assert_eq!(expr, Expr::add(Expr::Natural(2), Expr::Natural(3)));
     }
 
     #[test]
     fn test_negation() {
-        let expr = parse(&[Token::Minus, Token::Natural(3)]).unwrap();
+        let expr = lex(&[Token::Minus, Token::Natural(3)]).unwrap();
         assert_eq!(expr, Expr::neg(Expr::Natural(3)));
 
-        let expr = parse(&[
+        let expr = lex(&[
             Token::Natural(2),
             Token::Plus,
             Token::Minus,
@@ -374,7 +385,7 @@ mod test {
 
     #[test]
     fn test_precedence() {
-        let expr = parse(&[
+        let expr = lex(&[
             Token::Minus,
             Token::Natural(2),
             Token::Plus,
@@ -405,8 +416,24 @@ mod test {
     }
 
     #[test]
+    fn test_neg_precedence() {
+        let expr = lex(&[
+            Token::Minus,
+            Token::Natural(2),
+            Token::Exp,
+            Token::Natural(3),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            expr,
+            Expr::neg(Expr::exp(Expr::Natural(2), Expr::Natural(3)))
+        );
+    }
+
+    #[test]
     fn test_parse_repexpected_addition() {
-        let expr = parse(&[
+        let expr = lex(&[
             Token::Natural(2),
             Token::Plus,
             Token::Natural(3),
@@ -420,7 +447,7 @@ mod test {
 
     #[test]
     fn test_addition_subtraction() {
-        let expr = parse(&[
+        let expr = lex(&[
             Token::Natural(3),
             Token::Minus,
             Token::Natural(4),
@@ -448,8 +475,14 @@ mod test {
     }
 
     #[test]
+    fn test_keep() {
+        let expr = lex(&[Token::Roll(10, 8), Token::Keep, Token::Natural(8)]).unwrap();
+        assert_eq!(expr, Expr::keep(Expr::Roll(10, 8), Expr::Natural(8)));
+    }
+
+    #[test]
     fn test_roll_operators() {
-        let expr = parse(&[
+        let expr = lex(&[
             Token::Roll(1, 20),
             Token::Advantage,
             Token::Plus,
