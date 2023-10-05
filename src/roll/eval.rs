@@ -8,12 +8,19 @@ fn err<T, S: ToString>(msg: S) -> EvalResult<T> {
     Err(msg.to_string())
 }
 
-type Roll = (u32, u32);
-type RollOutcome = (Roll, Vec<u32>);
+struct Roll {
+    quantity: u32,
+    die: u32,
+    advantage: bool,
+    disadvantage: bool,
+}
+
+type RollOutcome = (Roll, Vec<u32>, u32);
 
 enum Value {
     Decimal(f32),
     Natural(u32),
+    Outcome(RollOutcome),
     Roll(Roll),
     Values(Vec<u32>),
 }
@@ -24,11 +31,18 @@ impl Value {
             Self::Decimal(v) => Ok(v),
             Self::Natural(v) => Ok(v as f32),
             Self::Roll(..) => Self::Values(self.values()?).decimal(),
-            Self::Values(values) => Ok(values
-                .into_iter()
-                .reduce(u32::saturating_add)
-                .map(|v| v as f32)
-                .unwrap_or(0.0)),
+            Self::Outcome((roll, values, result)) => Ok(result as f32),
+            Self::Values(values) => Ok(self.natural()? as f32),
+        }
+    }
+
+    fn natural(self) -> EvalResult<u32> {
+        match self {
+            Value::Decimal(v) => Ok(v as u32),
+            Value::Natural(v) => Ok(v),
+            Value::Outcome((roll, values, result)) => Ok(result),
+            Value::Roll(_) => Ok(self.outcome()?.2),
+            Value::Values(values) => Ok(values.iter().fold(0, |a, b| a + b)),
         }
     }
 
@@ -36,14 +50,11 @@ impl Value {
         match self {
             Self::Decimal(_) => err("Decimal value cannot be interpreted as values."),
             Self::Natural(n) => Ok(vec![n]),
-            Self::Roll((q, d)) => {
-                let quantity = q.try_into().map_err(|_| format!("{q} is too many dice."))?;
-                let mut values = Vec::with_capacity(quantity);
-                for _ in 0..quantity {
-                    values.push(rand::Rng::gen_range(&mut rand::thread_rng(), 1..=d))
-                }
+            Self::Roll(Roll { quantity, die, .. }) => {
+                let (_, values, _) = self.outcome()?;
                 Ok(values)
             }
+            Self::Outcome((roll, values, result)) => Ok(values),
             Self::Values(values) => Ok(values),
         }
     }
@@ -54,14 +65,80 @@ impl Value {
             _ => err("Expected a roll but found non-roll."),
         }
     }
+
+    fn outcome(self) -> EvalResult<RollOutcome> {
+        if let Value::Outcome(outcome) = self {
+            return Ok(outcome);
+        }
+
+        let roll = self.roll()?;
+        let mut quantity: usize = roll
+            .quantity
+            .try_into()
+            .map_err(|_| format!("{} is too many dice.", roll.quantity))?;
+        if roll.advantage ^ roll.disadvantage {
+            quantity = quantity.max(2);
+        }
+
+        let mut values = Vec::with_capacity(quantity);
+        let die = roll.die;
+        for _ in 0..quantity {
+            values.push(rand::Rng::gen_range(&mut rand::thread_rng(), 1..=die))
+        }
+
+        let result = if roll.advantage ^ roll.disadvantage {
+            let mut sorted = values.clone();
+            sorted.sort();
+
+            // Safe because quantity.max(2)
+            if roll.advantage {
+                *values.last().unwrap()
+            } else {
+                *values.first().unwrap()
+            }
+        } else {
+            values.iter().fold(0, |a, b| a + b)
+        };
+
+        Ok((roll, values, result))
+    }
 }
 
 struct ExprEval {
     value: Value,
-    rolls: Vec<Roll>,
+    rolls: Vec<RollOutcome>,
 }
 
 impl ExprEval {
+    fn outcome(&mut self) -> EvalResult<RollOutcome> {
+        match &self.value {
+            Value::Decimal(_) => err("Expected a roll but found decimal."),
+            Value::Natural(_) => err("Expected a roll but found natural."),
+            Value::Roll(_) => {
+                let outcome = self.value.outcome()?;
+                self.rolls.push(outcome);
+                Ok(outcome)
+            }
+            &Value::Outcome(outcome) => Ok(outcome),
+            Value::Values(_) => err("Expected a roll but found values."),
+        }
+    }
+
+    fn values(&mut self) -> EvalResult<Vec<u32>> {
+        match self.value {
+            Value::Outcome(_) | Value::Roll(_) => Value::Outcome(self.outcome()?).values(),
+            _ => self.value.values(),
+        }
+    }
+
+    fn unary<F: Fn(Value) -> EvalResult<Value>>(mut self, f: F) -> EvalResult<Self> {
+        let value = f(self.value)?;
+        Ok(Self {
+            value,
+            rolls: self.rolls,
+        })
+    }
+
     fn arithmetic<F: Fn(f32, f32) -> f32>(
         mut self,
         mut other: ExprEval,
@@ -98,9 +175,62 @@ impl ExprEval {
     }
 
     fn neg(self) -> EvalResult<ExprEval> {
-        let value = Value::Decimal(-self.value.decimal()?);
-        Ok(ExprEval {
-            value,
+        self.unary(|v| v.decimal().map(Value::Decimal))
+    }
+
+    fn adv(self) -> EvalResult<ExprEval> {
+        self.unary(|v| {
+            v.roll().map(|mut r| {
+                r.advantage = true;
+                Value::Roll(r)
+            })
+        })
+    }
+
+    fn disadv(self) -> EvalResult<Self> {
+        self.unary(|v| {
+            v.roll().map(|mut r| {
+                r.disadvantage = true;
+                Value::Roll(r)
+            })
+        })
+    }
+
+    fn sort(self) -> EvalResult<Self> {
+        self.unary(|v| {
+            v.values().map(|mut v| {
+                v.sort();
+                Value::Values(v)
+            })
+        })
+    }
+
+    fn keep(mut self, mut rhs: Self) -> EvalResult<Self> {
+        let mut values = self.values()?;
+        let keep = rhs.value.natural()? as usize;
+        self.rolls.append(&mut rhs.rolls);
+
+        if keep < values.len() {
+            let mut to_remove = values.len() - keep;
+            let mut smallest = None;
+            while to_remove > 0 {
+                for (i, v) in values.iter().enumerate() {
+                    if smallest.is_none() {
+                        smallest = Some((i, *v));
+                    } else if let Some((_, sv)) = smallest && sv > *v {
+                        smallest = Some((i, *v));
+                    }
+                }
+
+                if let Some((i, _)) = smallest {
+                    values.remove(i);
+                }
+                to_remove -= 1;
+            }
+        }
+
+        Ok(Self {
+            value: Value::Values(values),
             rolls: self.rolls,
         })
     }
@@ -113,11 +243,11 @@ fn evaluate(expr: &Expr) -> EvalResult<ExprEval> {
         Expr::Mul(lhs, rhs) => evaluate(lhs)?.mul(evaluate(rhs)?),
         Expr::Div(lhs, rhs) => evaluate(lhs)?.div(evaluate(rhs)?),
         Expr::Exp(lhs, rhs) => evaluate(lhs)?.exp(evaluate(rhs)?),
-        Expr::Neg(val) => evaluate(val)?.neg(),
-        Expr::Adv(_) => todo!(),
-        Expr::DisAdv(_) => todo!(),
-        Expr::Sort(_) => todo!(),
-        Expr::Keep(_, _) => todo!(),
+        Expr::Neg(arg) => evaluate(arg)?.neg(),
+        Expr::Adv(arg) => evaluate(arg)?.adv(),
+        Expr::DisAdv(arg) => evaluate(arg)?.adv(),
+        Expr::Sort(arg) => evaluate(arg)?.sort(),
+        Expr::Keep(lhs, rhs) => evaluate(lhs)?.keep(evaluate(rhs)?),
         Expr::Roll(q, d) => todo!(),
         Expr::Natural(_) => todo!(),
     }
