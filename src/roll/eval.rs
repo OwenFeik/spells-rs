@@ -110,24 +110,35 @@ struct ExprEval {
 }
 
 impl ExprEval {
-    fn outcome(&mut self) -> EvalResult<RollOutcome> {
+    fn new(value: Value) -> Self {
+        Self {
+            value,
+            rolls: Vec::new(),
+        }
+    }
+
+    fn outcome(mut self) -> EvalResult<(Self, RollOutcome)> {
         match &self.value {
             Value::Decimal(_) => err("Expected a roll but found decimal."),
             Value::Natural(_) => err("Expected a roll but found natural."),
             Value::Roll(_) => {
                 let outcome = self.value.outcome()?;
                 self.rolls.push(outcome);
-                Ok(outcome)
+                Ok((self, outcome))
             }
-            &Value::Outcome(outcome) => Ok(outcome),
+            &Value::Outcome(outcome) => Ok((self, outcome)),
             Value::Values(_) => err("Expected a roll but found values."),
         }
     }
 
-    fn values(&mut self) -> EvalResult<Vec<u32>> {
+    fn values(self) -> EvalResult<(Self, Vec<u32>)> {
         match self.value {
-            Value::Outcome(_) | Value::Roll(_) => Value::Outcome(self.outcome()?).values(),
-            _ => self.value.values(),
+            Value::Outcome(_) | Value::Roll(_) => {
+                let (val, outcome) = self.outcome()?;
+                let values = Value::Outcome(outcome).values()?;
+                Ok((val, values))
+            }
+            _ => Ok((self, self.value.values()?)),
         }
     }
 
@@ -205,10 +216,10 @@ impl ExprEval {
         })
     }
 
-    fn keep(mut self, mut rhs: Self) -> EvalResult<Self> {
-        let mut values = self.values()?;
+    fn keep(self, mut rhs: Self) -> EvalResult<Self> {
+        let (mut this, mut values) = self.values()?;
         let keep = rhs.value.natural()? as usize;
-        self.rolls.append(&mut rhs.rolls);
+        this.rolls.append(&mut rhs.rolls);
 
         if keep < values.len() {
             let mut to_remove = values.len() - keep;
@@ -234,6 +245,19 @@ impl ExprEval {
             rolls: self.rolls,
         })
     }
+
+    fn roll(quantity: u32, die: u32) -> Self {
+        Self::new(Value::Roll(Roll {
+            quantity,
+            die,
+            advantage: false,
+            disadvantage: false,
+        }))
+    }
+
+    fn natural(value: u32) -> Self {
+        Self::new(Value::Natural(value))
+    }
 }
 
 fn evaluate(expr: &Expr) -> EvalResult<ExprEval> {
@@ -248,7 +272,7 @@ fn evaluate(expr: &Expr) -> EvalResult<ExprEval> {
         Expr::DisAdv(arg) => evaluate(arg)?.adv(),
         Expr::Sort(arg) => evaluate(arg)?.sort(),
         Expr::Keep(lhs, rhs) => evaluate(lhs)?.keep(evaluate(rhs)?),
-        Expr::Roll(q, d) => todo!(),
-        Expr::Natural(_) => todo!(),
+        &Expr::Roll(q, d) => Ok(ExprEval::roll(q, d)),
+        &Expr::Natural(v) => Ok(ExprEval::natural(v)),
     }
 }
