@@ -9,15 +9,26 @@ fn err<T, S: ToString>(msg: S) -> EvalResult<T> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Roll {
+pub struct Roll {
     quantity: u32,
     die: u32,
     advantage: bool,
     disadvantage: bool,
 }
 
+impl Roll {
+    fn new(quantity: u32, die: u32) -> Self {
+        Roll {
+            quantity,
+            die,
+            advantage: false,
+            disadvantage: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct RollOutcome {
+pub struct RollOutcome {
     roll: Roll,
     values: Vec<u32>,
     result: u32,
@@ -49,7 +60,7 @@ impl Value {
             Value::Natural(v) => Ok(v),
             Value::Outcome(outcome) => Ok(outcome.result),
             Value::Roll(_) => Ok(self.outcome()?.result),
-            Value::Values(values) => Ok(values.iter().fold(0, |a, b| a + b)),
+            Value::Values(values) => Ok(values.iter().sum()),
         }
     }
 
@@ -57,7 +68,7 @@ impl Value {
         match self {
             Self::Decimal(_) => err("Decimal value cannot be interpreted as values."),
             Self::Natural(n) => Ok(vec![n]),
-            Self::Roll(Roll { quantity, die, .. }) => Ok(self.outcome()?.values),
+            Self::Roll(..) => Ok(self.outcome()?.values),
             Self::Outcome(outcome) => Ok(outcome.values),
             Self::Values(values) => Ok(values),
         }
@@ -112,6 +123,7 @@ impl Value {
     }
 }
 
+#[derive(Debug)]
 struct ExprEval {
     value: Value,
     rolls: Vec<RollOutcome>,
@@ -126,34 +138,48 @@ impl ExprEval {
     }
 
     fn outcome(mut self) -> EvalResult<(Self, RollOutcome)> {
-        match &self.value {
-            Value::Decimal(_) => err("Expected a roll but found decimal."),
-            Value::Natural(_) => err("Expected a roll but found natural."),
-            Value::Roll(_) => {
-                let outcome = self.value.clone().outcome()?;
-                self.rolls.push(outcome.clone());
-                Ok((self, outcome))
-            }
-            Value::Outcome(outcome) => {
-                let outcome = outcome.clone();
-                Ok((self, outcome))
-            }
-            Value::Values(_) => err("Expected a roll but found values."),
-        }
+        let outcome = if let Value::Outcome(outcome) = &self.value {
+            outcome.clone()
+        } else {
+            let value = self.value.clone();
+            let outcome = value.outcome()?;
+            self.rolls.push(outcome.clone());
+            outcome
+        };
+        Ok((self, outcome))
     }
 
     fn values(self) -> EvalResult<(Self, Vec<u32>)> {
-        if matches!(self.value, Value::Outcome(_) | Value::Roll(_)) {
+        if matches!(self.value, Value::Roll(_)) {
             let (val, outcome) = self.outcome()?;
-            let values = Value::Outcome(outcome).values()?;
-            Ok((val, values))
+            Ok((val, Value::Outcome(outcome).values()?))
         } else {
             let values = self.value.clone().values()?;
             Ok((self, values))
         }
     }
 
-    fn unary<F: Fn(Value) -> EvalResult<Value>>(mut self, f: F) -> EvalResult<Self> {
+    fn natural(self) -> EvalResult<(Self, u32)> {
+        if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
+            let (this, values) = self.values()?;
+            Ok((this, Value::Values(values).natural()?))
+        } else {
+            let value = self.value.clone().natural()?;
+            Ok((self, value))
+        }
+    }
+
+    fn decimal(self) -> EvalResult<(Self, f32)> {
+        if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
+            let (this, values) = self.values()?;
+            Ok((this, Value::Values(values).decimal()?))
+        } else {
+            let value = self.value.clone().decimal()?;
+            Ok((self, value))
+        }
+    }
+
+    fn unary<F: Fn(Value) -> EvalResult<Value>>(self, f: F) -> EvalResult<Self> {
         let value = f(self.value)?;
         Ok(Self {
             value,
@@ -161,18 +187,13 @@ impl ExprEval {
         })
     }
 
-    fn arithmetic<F: Fn(f32, f32) -> f32>(
-        mut self,
-        mut other: ExprEval,
-        f: F,
-    ) -> EvalResult<ExprEval> {
-        self.rolls.append(&mut other.rolls);
-        let rolls = self.rolls;
-        let lhs = self.value.decimal()?;
-        let rhs = other.value.decimal()?;
+    fn arithmetic<F: Fn(f32, f32) -> f32>(self, other: ExprEval, f: F) -> EvalResult<ExprEval> {
+        let (mut this, lhs) = self.decimal()?;
+        let (mut that, rhs) = other.decimal()?;
+        this.rolls.append(&mut that.rolls);
         Ok(ExprEval {
             value: Value::Decimal(f(lhs, rhs)),
-            rolls,
+            rolls: this.rolls,
         })
     }
 
@@ -227,11 +248,12 @@ impl ExprEval {
         })
     }
 
-    fn keep(self, mut rhs: Self) -> EvalResult<Self> {
+    fn keep(self, rhs: Self) -> EvalResult<Self> {
         let (mut this, mut values) = self.values()?;
-        let keep = rhs.value.natural()? as usize;
-        this.rolls.append(&mut rhs.rolls);
+        let (mut that, keep) = rhs.natural()?;
+        this.rolls.append(&mut that.rolls);
 
+        let keep = keep as usize;
         if keep < values.len() {
             let mut to_remove = values.len() - keep;
             let mut smallest = None;
@@ -258,15 +280,10 @@ impl ExprEval {
     }
 
     fn roll(quantity: u32, die: u32) -> Self {
-        Self::new(Value::Roll(Roll {
-            quantity,
-            die,
-            advantage: false,
-            disadvantage: false,
-        }))
+        Self::new(Value::Roll(Roll::new(quantity, die)))
     }
 
-    fn natural(value: u32) -> Self {
+    fn nat(value: u32) -> Self {
         Self::new(Value::Natural(value))
     }
 }
@@ -280,11 +297,11 @@ fn evaluate(expr: &Expr) -> EvalResult<ExprEval> {
         Expr::Exp(lhs, rhs) => evaluate(lhs)?.exp(evaluate(rhs)?),
         Expr::Neg(arg) => evaluate(arg)?.neg(),
         Expr::Adv(arg) => evaluate(arg)?.adv(),
-        Expr::DisAdv(arg) => evaluate(arg)?.adv(),
+        Expr::DisAdv(arg) => evaluate(arg)?.disadv(),
         Expr::Sort(arg) => evaluate(arg)?.sort(),
         Expr::Keep(lhs, rhs) => evaluate(lhs)?.keep(evaluate(rhs)?),
         &Expr::Roll(q, d) => Ok(ExprEval::roll(q, d)),
-        &Expr::Natural(v) => Ok(ExprEval::natural(v)),
+        &Expr::Natural(v) => Ok(ExprEval::nat(v)),
     }
 }
 
@@ -295,13 +312,13 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_eval_natural() {
+    fn test_natural() {
         let value = evaluate(&Expr::Natural(16)).unwrap().value;
         assert_eq!(value, Value::Natural(16));
     }
 
     #[test]
-    fn test_eval_roll() {
+    fn test_roll() {
         let value = evaluate(&Expr::Roll(4, 12)).unwrap().value;
         assert_eq!(
             value,
@@ -315,7 +332,7 @@ mod test {
     }
 
     #[test]
-    fn test_eval_add() {
+    fn test_add() {
         assert_eq!(
             evaluate(&parse("5 + 4 + 3 + 2 + 1").unwrap())
                 .unwrap()
@@ -324,5 +341,71 @@ mod test {
                 .unwrap(),
             5 + 4 + 3 + 2 + 1
         );
+    }
+
+    #[test]
+    fn test_arithmetic() {
+        assert_eq!(
+            evaluate(&parse("5 * 4 ^ 2 / 3 + 2 - 1").unwrap())
+                .unwrap()
+                .value
+                .decimal()
+                .unwrap(),
+            5.0 * 4.0_f32.powf(2.0) / 3.0 + 2.0 - 1.0
+        );
+    }
+
+    #[test]
+    fn test_rolls() {
+        let result = evaluate(&parse("4d6k3 + 2d4 + d20d + 2d10a").unwrap()).unwrap();
+        let rolls: Vec<Roll> = result.rolls.into_iter().map(|oc| oc.roll).collect();
+        assert_eq!(
+            rolls,
+            vec![
+                Roll::new(4, 6),
+                Roll::new(2, 4),
+                Roll {
+                    quantity: 1,
+                    die: 20,
+                    advantage: false,
+                    disadvantage: true
+                },
+                Roll {
+                    quantity: 2,
+                    die: 10,
+                    advantage: true,
+                    disadvantage: false
+                }
+            ]
+        )
+    }
+
+    #[test]
+    fn test_keep() {
+        let expr = ExprEval {
+            value: Value::Outcome(RollOutcome {
+                roll: Roll {
+                    quantity: 8,
+                    die: 8,
+                    advantage: false,
+                    disadvantage: false,
+                },
+                values: vec![1, 2, 3, 4, 5, 6, 7, 8],
+                result: 36,
+            }),
+            rolls: Vec::new(),
+        };
+        let values = expr.keep(ExprEval::nat(6)).unwrap().value.values().unwrap();
+        assert_eq!(values, vec![3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn test_sort() {
+        let expr = ExprEval {
+            value: Value::Values(vec![3, 4, 1, 7]),
+            rolls: Vec::new(),
+        };
+        let values = expr.sort().unwrap().value.values().unwrap();
+        assert_eq!(values, vec![1, 3, 4, 7]);
     }
 }
