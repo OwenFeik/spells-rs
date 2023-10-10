@@ -12,59 +12,43 @@ use super::token::Token;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
-    Add(Box<Expr>, Box<Expr>),
-    Sub(Box<Expr>, Box<Expr>),
-    Mul(Box<Expr>, Box<Expr>),
-    Div(Box<Expr>, Box<Expr>),
-    Exp(Box<Expr>, Box<Expr>),
-    Neg(Box<Expr>),
-    Adv(Box<Expr>),
-    DisAdv(Box<Expr>),
-    Sort(Box<Expr>),
-    Keep(Box<Expr>, Box<Expr>),
+    Add(usize, usize),
+    Sub(usize, usize),
+    Mul(usize, usize),
+    Div(usize, usize),
+    Exp(usize, usize),
+    Neg(usize),
+    Adv(usize),
+    DisAdv(usize),
+    Sort(usize),
+    Keep(usize, usize),
     Roll(u32, u32),
     Natural(u32),
 }
 
-impl Expr {
-    fn add(lhs: Expr, rhs: Expr) -> Expr {
-        Expr::Add(Box::new(lhs), Box::new(rhs))
+#[derive(Debug)]
+pub struct Ast(Vec<Expr>);
+
+impl Ast {
+    fn new() -> Self {
+        Self(Vec::new())
     }
 
-    fn sub(lhs: Expr, rhs: Expr) -> Expr {
-        Expr::Sub(Box::new(lhs), Box::new(rhs))
+    pub fn exprs(&self) -> &[Expr] {
+        &self.0
     }
 
-    fn mul(lhs: Expr, rhs: Expr) -> Expr {
-        Expr::Mul(Box::new(lhs), Box::new(rhs))
+    fn add(&mut self, expr: Expr) -> usize {
+        self.0.push(expr);
+        self.0.len() - 1
     }
 
-    fn div(lhs: Expr, rhs: Expr) -> Expr {
-        Expr::Div(Box::new(lhs), Box::new(rhs))
+    pub fn get(&self, expr: usize) -> Option<&Expr> {
+        self.0.get(expr)
     }
 
-    fn exp(lhs: Expr, rhs: Expr) -> Expr {
-        Expr::Exp(Box::new(lhs), Box::new(rhs))
-    }
-
-    fn keep(lhs: Expr, rhs: Expr) -> Expr {
-        Expr::Keep(Box::new(lhs), Box::new(rhs))
-    }
-
-    fn neg(operand: Expr) -> Expr {
-        Expr::Neg(Box::new(operand))
-    }
-
-    fn adv(operand: Expr) -> Expr {
-        Expr::Adv(Box::new(operand))
-    }
-
-    fn disadv(operand: Expr) -> Expr {
-        Expr::DisAdv(Box::new(operand))
-    }
-
-    fn sort(operand: Expr) -> Expr {
-        Expr::Sort(Box::new(operand))
+    pub fn root(&self) -> Option<&Expr> {
+        self.0.last()
     }
 }
 
@@ -139,14 +123,14 @@ impl Operator {
         }
     }
 
-    fn binary(self, lhs: Expr, rhs: Expr) -> ParseResult<Expr> {
+    fn binary(self, lhs: usize, rhs: usize) -> ParseResult<Expr> {
         match self {
-            Operator::Add => Ok(Expr::add(lhs, rhs)),
-            Operator::Sub => Ok(Expr::sub(lhs, rhs)),
-            Operator::Mul => Ok(Expr::mul(lhs, rhs)),
-            Operator::Div => Ok(Expr::div(lhs, rhs)),
-            Operator::Exp => Ok(Expr::exp(lhs, rhs)),
-            Operator::Keep => Ok(Expr::keep(lhs, rhs)),
+            Operator::Add => Ok(Expr::Add(lhs, rhs)),
+            Operator::Sub => Ok(Expr::Sub(lhs, rhs)),
+            Operator::Mul => Ok(Expr::Mul(lhs, rhs)),
+            Operator::Div => Ok(Expr::Div(lhs, rhs)),
+            Operator::Exp => Ok(Expr::Exp(lhs, rhs)),
+            Operator::Keep => Ok(Expr::Keep(lhs, rhs)),
             _ => err(format!("{self:?} is not a binary operator.")),
         }
     }
@@ -162,12 +146,12 @@ impl Operator {
         matches!(self, Operator::Adv | Operator::DisAdv | Operator::Sort)
     }
 
-    fn unary(self, operand: Expr) -> ParseResult<Expr> {
+    fn unary(self, operand: usize) -> ParseResult<Expr> {
         match self {
-            Operator::Neg => Ok(Expr::neg(operand)),
-            Operator::Adv => Ok(Expr::adv(operand)),
-            Operator::DisAdv => Ok(Expr::disadv(operand)),
-            Operator::Sort => Ok(Expr::sort(operand)),
+            Operator::Neg => Ok(Expr::Neg(operand)),
+            Operator::Adv => Ok(Expr::Adv(operand)),
+            Operator::DisAdv => Ok(Expr::DisAdv(operand)),
+            Operator::Sort => Ok(Expr::Sort(operand)),
             _ => err(format!("{self:?} is not a unary operator.")),
         }
     }
@@ -205,7 +189,8 @@ impl Operator {
 struct Parser<'a> {
     input: &'a [Token],
     operators: Vec<Operator>,
-    operands: Vec<Expr>,
+    operands: Vec<usize>,
+    ast: Ast,
 }
 
 impl<'a> Parser<'a> {
@@ -214,18 +199,15 @@ impl<'a> Parser<'a> {
             input,
             operators: Vec::new(),
             operands: Vec::new(),
+            ast: Ast::new(),
         }
     }
 
-    fn parse(mut self) -> ParseResult<Expr> {
+    fn parse(mut self) -> ParseResult<Ast> {
         self.operators.push(Operator::Sentinel);
         self.expr()?;
         if self.input.is_empty() {
-            if let Some(expr) = self.operands.pop() {
-                Ok(expr)
-            } else {
-                err("Operand stack empty at parse conclusion.")
-            }
+            Ok(self.ast)
         } else {
             err("Input not consumed.")
         }
@@ -252,11 +234,11 @@ impl<'a> Parser<'a> {
     fn term(&mut self) -> ParseResult<()> {
         let res = match *self.next()? {
             Token::Natural(n) => {
-                self.operands.push(Expr::Natural(n));
+                self.operands.push(self.ast.add(Expr::Natural(n)));
                 Ok(())
             }
             Token::Roll(q, d) => {
-                self.operands.push(Expr::Roll(q, d));
+                self.operands.push(self.ast.add(Expr::Roll(q, d)));
                 Ok(())
             }
             Token::ParenOpen => {
@@ -312,7 +294,7 @@ impl<'a> Parser<'a> {
         self.input.first()
     }
 
-    fn pop_operand(&mut self) -> ParseResult<Expr> {
+    fn pop_operand(&mut self) -> ParseResult<usize> {
         if let Some(operand) = self.operands.pop() {
             Ok(operand)
         } else {
@@ -325,11 +307,11 @@ impl<'a> Parser<'a> {
             if op.is_binary() {
                 let rhs = self.pop_operand()?;
                 let lhs = self.pop_operand()?;
-                self.operands.push(op.binary(lhs, rhs)?);
+                self.push_operand(op.binary(lhs, rhs)?);
                 Ok(())
             } else if op.is_unary() {
                 let operand = self.pop_operand()?;
-                self.operands.push(op.unary(operand)?);
+                self.push_operand(op.unary(operand)?);
                 Ok(())
             } else {
                 err("Attempted to pop Sentinel operator.")
@@ -337,6 +319,10 @@ impl<'a> Parser<'a> {
         } else {
             err("Attempted to pop empty operator stack.")
         }
+    }
+
+    fn push_operand(&mut self, operand: Expr) {
+        self.operands.push(self.ast.add(operand));
     }
 
     fn push_operator(&mut self, op: Operator) {
@@ -351,7 +337,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-pub fn lex(input: &[Token]) -> Result<Expr, String> {
+pub fn lex(input: &[Token]) -> Result<Ast, String> {
     Parser::new(input).parse()
 }
 
@@ -361,16 +347,21 @@ mod test {
 
     #[test]
     fn test_parse_addition() {
-        let expr = lex(&[Token::Natural(2), Token::Plus, Token::Natural(3)]).unwrap();
-        assert_eq!(expr, Expr::add(Expr::Natural(2), Expr::Natural(3)));
+        let ast = lex(&[Token::Natural(2), Token::Plus, Token::Natural(3)]).unwrap();
+        assert_eq!(
+            ast.exprs(),
+            vec![Expr::Natural(2), Expr::Natural(3), Expr::Add(0, 1)]
+        );
+        assert_eq!(ast.root(), Some(&Expr::Add(0, 1)));
     }
 
     #[test]
     fn test_negation() {
-        let expr = lex(&[Token::Minus, Token::Natural(3)]).unwrap();
-        assert_eq!(expr, Expr::neg(Expr::Natural(3)));
+        let ast = lex(&[Token::Minus, Token::Natural(3)]).unwrap();
+        assert_eq!(ast.exprs(), vec![Expr::Natural(3), Expr::Neg(0)]);
+        assert_eq!(ast.root(), Some(&Expr::Neg(0)));
 
-        let expr = lex(&[
+        let ast = lex(&[
             Token::Natural(2),
             Token::Plus,
             Token::Minus,
@@ -378,14 +369,20 @@ mod test {
         ])
         .unwrap();
         assert_eq!(
-            expr,
-            Expr::add(Expr::Natural(2), Expr::neg(Expr::Natural(3)))
+            ast.exprs(),
+            vec![
+                Expr::Natural(2),
+                Expr::Natural(3),
+                Expr::Neg(1),
+                Expr::Add(0, 2)
+            ]
         );
+        assert_eq!(ast.root(), Some(&Expr::Add(0, 2)));
     }
 
     #[test]
     fn test_precedence() {
-        let expr = lex(&[
+        let ast = lex(&[
             Token::Minus,
             Token::Natural(2),
             Token::Plus,
@@ -401,23 +398,26 @@ mod test {
 
         // -2 + 3 * 4 - 5 = ((-2) + ((3 ^ 4) * 5)) - 6
         assert_eq!(
-            expr,
-            Expr::sub(
-                Expr::add(
-                    Expr::neg(Expr::Natural(2)),
-                    Expr::mul(
-                        Expr::exp(Expr::Natural(3), Expr::Natural(4)),
-                        Expr::Natural(5)
-                    )
-                ),
-                Expr::Natural(6)
-            )
+            ast.exprs(),
+            vec![
+                Expr::Natural(2),
+                Expr::Neg(0),
+                Expr::Natural(3),
+                Expr::Natural(4),
+                Expr::Exp(2, 3),
+                Expr::Natural(5),
+                Expr::Mul(4, 5),
+                Expr::Add(1, 6),
+                Expr::Natural(6),
+                Expr::Sub(7, 8)
+            ]
         );
+        assert_eq!(ast.root(), Some(&Expr::Sub(7, 8)));
     }
 
     #[test]
     fn test_neg_precedence() {
-        let expr = lex(&[
+        let ast = lex(&[
             Token::Minus,
             Token::Natural(2),
             Token::Exp,
@@ -425,15 +425,12 @@ mod test {
         ])
         .unwrap();
 
-        assert_eq!(
-            expr,
-            Expr::neg(Expr::exp(Expr::Natural(2), Expr::Natural(3)))
-        );
+        assert_eq!(ast.root(), Some(&Expr::Neg(2)));
     }
 
     #[test]
-    fn test_parse_repexpected_addition() {
-        let expr = lex(&[
+    fn test_parse_repeated_addition() {
+        let ast = lex(&[
             Token::Natural(2),
             Token::Plus,
             Token::Natural(3),
@@ -441,13 +438,21 @@ mod test {
             Token::Natural(4),
         ])
         .unwrap();
-        let lhs = Expr::add(Expr::Natural(2), Expr::Natural(3));
-        assert_eq!(expr, Expr::add(lhs, Expr::Natural(4)));
+        assert_eq!(
+            ast.exprs(),
+            vec![
+                Expr::Natural(2),
+                Expr::Natural(3),
+                Expr::Add(0, 1),
+                Expr::Natural(4),
+                Expr::Add(2, 3)
+            ]
+        );
     }
 
     #[test]
     fn test_addition_subtraction() {
-        let expr = lex(&[
+        let ast = lex(&[
             Token::Natural(3),
             Token::Minus,
             Token::Natural(4),
@@ -456,12 +461,15 @@ mod test {
         ])
         .unwrap();
         assert_eq!(
-            expr,
-            Expr::add(
-                Expr::sub(Expr::Natural(3), Expr::Natural(4)),
+            ast.exprs(),
+            vec![
+                Expr::Natural(3),
+                Expr::Natural(4),
+                Expr::Sub(0, 1),
                 Expr::Natural(5),
-            )
-        )
+                Expr::Add(2, 3)
+            ]
+        );
     }
 
     #[test]
@@ -476,13 +484,17 @@ mod test {
 
     #[test]
     fn test_keep() {
-        let expr = lex(&[Token::Roll(10, 8), Token::Keep, Token::Natural(8)]).unwrap();
-        assert_eq!(expr, Expr::keep(Expr::Roll(10, 8), Expr::Natural(8)));
+        assert_eq!(
+            lex(&[Token::Roll(10, 8), Token::Keep, Token::Natural(8)])
+                .unwrap()
+                .exprs(),
+            vec![Expr::Roll(10, 8), Expr::Natural(8), Expr::Keep(0, 1)]
+        );
     }
 
     #[test]
     fn test_roll_operators() {
-        let expr = lex(&[
+        let ast = lex(&[
             Token::Roll(1, 20),
             Token::Advantage,
             Token::Plus,
@@ -498,11 +510,19 @@ mod test {
 
         // d20a + d4d + 10d8k8s = ((d20a) + (d4d)) + ((10d8k8)s)
         assert_eq!(
-            expr,
-            Expr::add(
-                Expr::add(Expr::adv(Expr::Roll(1, 20)), Expr::disadv(Expr::Roll(1, 4))),
-                Expr::sort(Expr::keep(Expr::Roll(10, 8), Expr::Natural(8)))
-            )
+            ast.exprs(),
+            vec![
+                Expr::Roll(1, 20),
+                Expr::Adv(0),
+                Expr::Roll(1, 4),
+                Expr::DisAdv(2),
+                Expr::Add(1, 3),
+                Expr::Roll(10, 8),
+                Expr::Natural(8),
+                Expr::Keep(5, 6),
+                Expr::Sort(7),
+                Expr::Add(4, 8)
+            ]
         );
     }
 }
