@@ -34,10 +34,6 @@ impl Ast {
         Self(Vec::new())
     }
 
-    pub fn exprs(&self) -> &[Expr] {
-        &self.0
-    }
-
     fn add(&mut self, expr: Expr) -> usize {
         self.0.push(expr);
         self.0.len() - 1
@@ -47,8 +43,12 @@ impl Ast {
         self.0.get(expr)
     }
 
-    pub fn root(&self) -> Option<&Expr> {
-        self.0.last()
+    pub fn start(&self) -> usize {
+        if self.0.is_empty() {
+            0
+        } else {
+            self.0.len() - 1
+        }
     }
 }
 
@@ -343,23 +343,33 @@ pub fn lex(input: &[Token]) -> Result<Ast, String> {
 
 #[cfg(test)]
 mod test {
+    use crate::roll::token::tokenise;
+
     use super::*;
+
+    fn exprs(ast: &Ast) -> &[Expr] {
+        &ast.0
+    }
+
+    fn root(ast: &Ast) -> Option<&Expr> {
+        ast.get(ast.start())
+    }
 
     #[test]
     fn test_parse_addition() {
         let ast = lex(&[Token::Natural(2), Token::Plus, Token::Natural(3)]).unwrap();
         assert_eq!(
-            ast.exprs(),
+            exprs(&ast),
             vec![Expr::Natural(2), Expr::Natural(3), Expr::Add(0, 1)]
         );
-        assert_eq!(ast.root(), Some(&Expr::Add(0, 1)));
+        assert_eq!(root(&ast), Some(&Expr::Add(0, 1)));
     }
 
     #[test]
     fn test_negation() {
         let ast = lex(&[Token::Minus, Token::Natural(3)]).unwrap();
-        assert_eq!(ast.exprs(), vec![Expr::Natural(3), Expr::Neg(0)]);
-        assert_eq!(ast.root(), Some(&Expr::Neg(0)));
+        assert_eq!(exprs(&ast), vec![Expr::Natural(3), Expr::Neg(0)]);
+        assert_eq!(root(&ast), Some(&Expr::Neg(0)));
 
         let ast = lex(&[
             Token::Natural(2),
@@ -369,7 +379,7 @@ mod test {
         ])
         .unwrap();
         assert_eq!(
-            ast.exprs(),
+            exprs(&ast),
             vec![
                 Expr::Natural(2),
                 Expr::Natural(3),
@@ -377,7 +387,7 @@ mod test {
                 Expr::Add(0, 2)
             ]
         );
-        assert_eq!(ast.root(), Some(&Expr::Add(0, 2)));
+        assert_eq!(root(&ast), Some(&Expr::Add(0, 2)));
     }
 
     #[test]
@@ -398,7 +408,7 @@ mod test {
 
         // -2 + 3 * 4 - 5 = ((-2) + ((3 ^ 4) * 5)) - 6
         assert_eq!(
-            ast.exprs(),
+            exprs(&ast),
             vec![
                 Expr::Natural(2),
                 Expr::Neg(0),
@@ -412,7 +422,7 @@ mod test {
                 Expr::Sub(7, 8)
             ]
         );
-        assert_eq!(ast.root(), Some(&Expr::Sub(7, 8)));
+        assert_eq!(root(&ast), Some(&Expr::Sub(7, 8)));
     }
 
     #[test]
@@ -425,7 +435,7 @@ mod test {
         ])
         .unwrap();
 
-        assert_eq!(ast.root(), Some(&Expr::Neg(2)));
+        assert_eq!(root(&ast), Some(&Expr::Neg(2)));
     }
 
     #[test]
@@ -439,7 +449,7 @@ mod test {
         ])
         .unwrap();
         assert_eq!(
-            ast.exprs(),
+            exprs(&ast),
             vec![
                 Expr::Natural(2),
                 Expr::Natural(3),
@@ -461,7 +471,7 @@ mod test {
         ])
         .unwrap();
         assert_eq!(
-            ast.exprs(),
+            exprs(&ast),
             vec![
                 Expr::Natural(3),
                 Expr::Natural(4),
@@ -484,10 +494,9 @@ mod test {
 
     #[test]
     fn test_keep() {
+        let ast = lex(&[Token::Roll(10, 8), Token::Keep, Token::Natural(8)]).unwrap();
         assert_eq!(
-            lex(&[Token::Roll(10, 8), Token::Keep, Token::Natural(8)])
-                .unwrap()
-                .exprs(),
+            exprs(&ast),
             vec![Expr::Roll(10, 8), Expr::Natural(8), Expr::Keep(0, 1)]
         );
     }
@@ -510,7 +519,7 @@ mod test {
 
         // d20a + d4d + 10d8k8s = ((d20a) + (d4d)) + ((10d8k8)s)
         assert_eq!(
-            ast.exprs(),
+            exprs(&ast),
             vec![
                 Expr::Roll(1, 20),
                 Expr::Adv(0),
@@ -522,6 +531,37 @@ mod test {
                 Expr::Keep(5, 6),
                 Expr::Sort(7),
                 Expr::Add(4, 8)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_arithmetic() {
+        assert_eq!(
+            exprs(&lex(&tokenise("4 + 3 - 2 * 5")).unwrap()),
+            vec![
+                Expr::Natural(4),
+                Expr::Natural(3),
+                Expr::Add(0, 1),
+                Expr::Natural(2),
+                Expr::Natural(5),
+                Expr::Mul(3, 4),
+                Expr::Sub(2, 5)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_exponent() {
+        assert_eq!(
+            exprs(&lex(&tokenise("-5^3*3")).unwrap()),
+            vec![
+                Expr::Natural(5),
+                Expr::Natural(3),
+                Expr::Exp(0, 1),
+                Expr::Neg(2),
+                Expr::Natural(3),
+                Expr::Mul(3, 4)
             ]
         );
     }

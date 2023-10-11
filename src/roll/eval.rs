@@ -1,37 +1,14 @@
 use std::convert::TryInto;
 
-use super::expr::Expr;
+use super::{
+    expr::{Ast, Expr},
+    Outcome, Roll, RollOutcome,
+};
 
 type EvalResult<T> = Result<T, String>;
 
 fn err<T, S: ToString>(msg: S) -> EvalResult<T> {
     Err(msg.to_string())
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Roll {
-    quantity: u32,
-    die: u32,
-    advantage: bool,
-    disadvantage: bool,
-}
-
-impl Roll {
-    fn new(quantity: u32, die: u32) -> Self {
-        Roll {
-            quantity,
-            die,
-            advantage: false,
-            disadvantage: false,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RollOutcome {
-    roll: Roll,
-    values: Vec<u32>,
-    result: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -112,7 +89,7 @@ impl Value {
                 *values.first().unwrap()
             }
         } else {
-            values.iter().fold(0, |a, b| a + b)
+            values.iter().sum()
         };
 
         Ok(RollOutcome {
@@ -288,38 +265,56 @@ impl ExprEval {
     }
 }
 
-fn evaluate(expr: &Expr) -> EvalResult<ExprEval> {
-    match expr {
-        Expr::Add(lhs, rhs) => evaluate(lhs)?.add(evaluate(rhs)?),
-        Expr::Sub(lhs, rhs) => evaluate(lhs)?.sub(evaluate(rhs)?),
-        Expr::Mul(lhs, rhs) => evaluate(lhs)?.mul(evaluate(rhs)?),
-        Expr::Div(lhs, rhs) => evaluate(lhs)?.div(evaluate(rhs)?),
-        Expr::Exp(lhs, rhs) => evaluate(lhs)?.exp(evaluate(rhs)?),
-        Expr::Neg(arg) => evaluate(arg)?.neg(),
-        Expr::Adv(arg) => evaluate(arg)?.adv(),
-        Expr::DisAdv(arg) => evaluate(arg)?.disadv(),
-        Expr::Sort(arg) => evaluate(arg)?.sort(),
-        Expr::Keep(lhs, rhs) => evaluate(lhs)?.keep(evaluate(rhs)?),
-        &Expr::Roll(q, d) => Ok(ExprEval::roll(q, d)),
-        &Expr::Natural(v) => Ok(ExprEval::nat(v)),
+fn evaluate(ast: &Ast, index: usize) -> EvalResult<ExprEval> {
+    if let Some(expr) = ast.get(index) {
+        match *expr {
+            Expr::Add(lhs, rhs) => evaluate(ast, lhs)?.add(evaluate(ast, rhs)?),
+            Expr::Sub(lhs, rhs) => evaluate(ast, lhs)?.sub(evaluate(ast, rhs)?),
+            Expr::Mul(lhs, rhs) => evaluate(ast, lhs)?.mul(evaluate(ast, rhs)?),
+            Expr::Div(lhs, rhs) => evaluate(ast, lhs)?.div(evaluate(ast, rhs)?),
+            Expr::Exp(lhs, rhs) => evaluate(ast, lhs)?.exp(evaluate(ast, rhs)?),
+            Expr::Neg(arg) => evaluate(ast, arg)?.neg(),
+            Expr::Adv(arg) => evaluate(ast, arg)?.adv(),
+            Expr::DisAdv(arg) => evaluate(ast, arg)?.disadv(),
+            Expr::Sort(arg) => evaluate(ast, arg)?.sort(),
+            Expr::Keep(lhs, rhs) => evaluate(ast, lhs)?.keep(evaluate(ast, rhs)?),
+            Expr::Roll(q, d) => Ok(ExprEval::roll(q, d)),
+            Expr::Natural(v) => Ok(ExprEval::nat(v)),
+        }
+    } else {
+        err("Attempted to evaluate expression which did not exist.")
     }
+}
+
+pub fn eval(ast: &Ast) -> EvalResult<Outcome> {
+    let (expval, value) = evaluate(ast, ast.start())?.decimal()?;
+    Ok(Outcome {
+        value,
+        rolls: expval.rolls,
+    })
 }
 
 #[cfg(test)]
 mod test {
-    use crate::roll::{expr::Expr, parse};
+    use crate::roll::{expr::lex, token::tokenise};
 
     use super::*;
 
+    fn parse(input: &str) -> Ast {
+        lex(&tokenise(input)).unwrap()
+    }
+
     #[test]
     fn test_natural() {
-        let value = evaluate(&Expr::Natural(16)).unwrap().value;
+        let ast = parse("16");
+        let value = evaluate(&ast, ast.start()).unwrap().value;
         assert_eq!(value, Value::Natural(16));
     }
 
     #[test]
     fn test_roll() {
-        let value = evaluate(&Expr::Roll(4, 12)).unwrap().value;
+        let ast = parse("4d12");
+        let value = evaluate(&ast, ast.start()).unwrap().value;
         assert_eq!(
             value,
             Value::Roll(Roll {
@@ -333,8 +328,9 @@ mod test {
 
     #[test]
     fn test_add() {
+        let ast = parse("5 + 4 + 3 + 2 + 1");
         assert_eq!(
-            evaluate(&parse("5 + 4 + 3 + 2 + 1").unwrap())
+            evaluate(&ast, ast.start())
                 .unwrap()
                 .value
                 .natural()
@@ -345,8 +341,9 @@ mod test {
 
     #[test]
     fn test_arithmetic() {
+        let ast = parse("5 * 4 ^ 2 / 3 + 2 - 1");
         assert_eq!(
-            evaluate(&parse("5 * 4 ^ 2 / 3 + 2 - 1").unwrap())
+            evaluate(&ast, ast.start())
                 .unwrap()
                 .value
                 .decimal()
@@ -357,7 +354,7 @@ mod test {
 
     #[test]
     fn test_rolls() {
-        let result = evaluate(&parse("4d6k3 + 2d4 + d20d + 2d10a").unwrap()).unwrap();
+        let result = eval(&parse("4d6k3 + 2d4 + d20d + 2d10a")).unwrap();
         let rolls: Vec<Roll> = result.rolls.into_iter().map(|oc| oc.roll).collect();
         assert_eq!(
             rolls,
@@ -407,5 +404,11 @@ mod test {
         };
         let values = expr.sort().unwrap().value.values().unwrap();
         assert_eq!(values, vec![1, 3, 4, 7]);
+    }
+
+    #[test]
+    fn test_eval() {
+        let ast = parse("2 + 3 - 4 * 5");
+        assert_eq!(eval(&ast).unwrap().value, 2.0 + 3.0 - 4.0 * 5.0);
     }
 }

@@ -12,7 +12,7 @@ pub enum Token {
     Keep,
     Advantage,
     Disadvantage,
-    Sort
+    Sort,
 }
 
 impl Token {
@@ -30,7 +30,7 @@ impl Token {
             'a' => Some(Self::Advantage),
             'd' => Some(Self::Disadvantage),
             's' => Some(Self::Sort),
-            _ => None
+            _ => None,
         }
     }
 
@@ -45,9 +45,8 @@ impl Token {
         }
 
         if c == 'd' {
-            match self {
-                Self::Natural(v) => return (None, Some(Self::Roll(v, 0))),
-                _ => {}
+            if let Self::Natural(v) = self {
+                return (None, Some(Self::Roll(v, 0)));
             }
         }
 
@@ -57,7 +56,7 @@ impl Token {
 
 pub fn tokenise(input: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
-    
+
     let mut current: Option<Token> = None;
     for c in input.chars() {
         if let Some(token) = current {
@@ -70,7 +69,7 @@ pub fn tokenise(input: &str) -> Vec<Token> {
             current = Token::from(c);
         }
     }
-    
+
     if let Some(current) = current {
         if let (Some(token), _) = current.consume(' ') {
             tokens.push(token);
@@ -90,18 +89,32 @@ mod test {
         assert_eq!(tokenise("d4"), vec![Token::Roll(1, 4)]);
         assert_eq!(tokenise("8d8"), vec![Token::Roll(8, 8)]);
         assert_eq!(tokenise("d20"), vec![Token::Roll(1, 20)]);
-        assert_eq!(tokenise("d20 d20"), vec![Token::Roll(1, 20), Token::Roll(1, 20)]);
+        assert_eq!(
+            tokenise("d20 d20"),
+            vec![Token::Roll(1, 20), Token::Roll(1, 20)]
+        );
     }
 
     #[test]
     fn test_tokenise_ops() {
         assert_eq!(
             tokenise("+ - * / ^"),
-            vec![Token::Plus, Token::Minus, Token::Times, Token::Divide, Token::Exp]
+            vec![
+                Token::Plus,
+                Token::Minus,
+                Token::Times,
+                Token::Divide,
+                Token::Exp
+            ]
         );
         assert_eq!(
             tokenise("a d k s"),
-            vec![Token::Advantage, Token::Disadvantage, Token::Keep, Token::Sort]
+            vec![
+                Token::Advantage,
+                Token::Disadvantage,
+                Token::Keep,
+                Token::Sort
+            ]
         );
     }
 
