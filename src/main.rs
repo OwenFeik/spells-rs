@@ -1,6 +1,7 @@
 #![feature(let_chains)]
 
 mod roll;
+mod tracker;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
