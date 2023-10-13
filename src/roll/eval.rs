@@ -138,8 +138,8 @@ impl ExprEval {
 
     fn natural(self) -> EvalResult<(Self, u32)> {
         if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
-            let (this, values) = self.values()?;
-            Ok((this, Value::Values(values).natural()?))
+            let (this, outcome) = self.outcome()?;
+            Ok((this, outcome.result))
         } else {
             let value = self.value.clone().natural()?;
             Ok((self, value))
@@ -148,20 +148,12 @@ impl ExprEval {
 
     fn decimal(self) -> EvalResult<(Self, f32)> {
         if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
-            let (this, values) = self.values()?;
-            Ok((this, Value::Values(values).decimal()?))
+            let (this, outcome) = self.outcome()?;
+            Ok((this, outcome.result as f32))
         } else {
             let value = self.value.clone().decimal()?;
             Ok((self, value))
         }
-    }
-
-    fn unary<F: Fn(Value) -> EvalResult<Value>>(self, f: F) -> EvalResult<Self> {
-        let value = f(self.value)?;
-        Ok(Self {
-            value,
-            rolls: self.rolls,
-        })
     }
 
     fn arithmetic<F: Fn(f32, f32) -> f32>(self, other: ExprEval, f: F) -> EvalResult<ExprEval> {
@@ -195,33 +187,37 @@ impl ExprEval {
     }
 
     fn neg(self) -> EvalResult<ExprEval> {
-        self.unary(|v| v.decimal().map(Value::Decimal))
+        let (this, value) = self.decimal()?;
+        Ok(Self {
+            value: Value::Decimal(-value),
+            rolls: this.rolls,
+        })
     }
 
     fn adv(self) -> EvalResult<ExprEval> {
-        self.unary(|v| {
-            v.roll().map(|mut r| {
-                r.advantage = true;
-                Value::Roll(r)
-            })
+        let mut roll = self.value.roll()?;
+        roll.advantage = true;
+        Ok(Self {
+            value: Value::Roll(roll),
+            rolls: self.rolls,
         })
     }
 
     fn disadv(self) -> EvalResult<Self> {
-        self.unary(|v| {
-            v.roll().map(|mut r| {
-                r.disadvantage = true;
-                Value::Roll(r)
-            })
+        let mut roll = self.value.roll()?;
+        roll.disadvantage = true;
+        Ok(Self {
+            value: Value::Roll(roll),
+            rolls: self.rolls,
         })
     }
 
     fn sort(self) -> EvalResult<Self> {
-        self.unary(|v| {
-            v.values().map(|mut v| {
-                v.sort();
-                Value::Values(v)
-            })
+        let (this, mut values) = self.values()?;
+        values.sort();
+        Ok(Self {
+            value: Value::Values(values),
+            rolls: this.rolls,
         })
     }
 
@@ -404,6 +400,12 @@ mod test {
         };
         let values = expr.sort().unwrap().value.values().unwrap();
         assert_eq!(values, vec![1, 3, 4, 7]);
+    }
+
+    #[test]
+    fn test_sort_outcomes() {
+        let ast = parse("8d8s");
+        assert_eq!(eval(&ast).unwrap().rolls.len(), 1);
     }
 
     #[test]
