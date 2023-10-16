@@ -1,3 +1,7 @@
+use std::fmt::Display;
+
+use crate::input;
+
 const INDENT_SIZE: usize = 4;
 
 trait TrackerNode {
@@ -5,14 +9,24 @@ trait TrackerNode {
 
     fn children(&self) -> &[&dyn TrackerNode];
 
-    fn print(&self, indent: usize);
+    fn format(&self, indent: usize) -> String;
 
-    fn handle(&self, command: &str);
+    fn print(&self) {
+        println!("{}", self.format(0));
+    }
+
+    fn handle(&self, input: &str);
+}
+
+impl Display for dyn TrackerNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.format(0))
+    }
 }
 
 struct Tracker {
     name: String,
-    value: u32,
+    value: i32,
 }
 
 impl TrackerNode for Tracker {
@@ -24,19 +38,18 @@ impl TrackerNode for Tracker {
         &[]
     }
 
-    fn print(&self, indent: usize) {
-        println!(
+    fn format(&self, indent: usize) -> String {
+        format!(
             "{}{}: {}",
             " ".repeat(indent * INDENT_SIZE),
             self.name(),
             self.value
-        );
+        )
     }
 
-    fn handle(&self, command: &str) {
-        let mut parts = command.trim().split(' ');
-        match parts.next() {
-            None => self.print(0),
+    fn handle(&self, input: &str) {
+        match input::word(input) {
+            "" => self.print(),
             _ => {}
         };
     }
@@ -56,18 +69,57 @@ impl<'a> TrackerNode for TrackerCollection<'a> {
         &self.children
     }
 
-    fn print(&self, indent: usize) {
-        println!("{}{}:", " ".repeat(indent * INDENT_SIZE), self.name());
+    fn format(&self, indent: usize) -> String {
+        let mut ret = format!("{}{}:", " ".repeat(indent * INDENT_SIZE), self.name());
         for tracker in &self.children {
-            tracker.print(indent + 1);
+            ret.push('\n');
+            ret.push_str(&tracker.format(indent + 1));
         }
+        ret
     }
 
-    fn handle(&self, command: &str) {
-        let mut parts = command.trim().split(' ');
-        match parts.next() {
-            None => self.print(0),
+    fn handle(&self, input: &str) {
+        match input::word(input) {
+            "" => self.print(),
             _ => {}
         };
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_format_tracker() {
+        assert_eq!(
+            Tracker {
+                name: "tracker".to_string(),
+                value: 42
+            }
+            .format(2),
+            "        tracker: 42"
+        );
+    }
+
+    #[test]
+    fn test_format_collection() {
+        assert_eq!(
+            TrackerCollection {
+                name: "collection".to_string(),
+                children: vec![
+                    &Tracker {
+                        name: "tracker1".to_string(),
+                        value: 1
+                    },
+                    &Tracker {
+                        name: "tracker2".to_string(),
+                        value: 2
+                    }
+                ]
+            }
+            .format(1),
+            "    collection:\n        tracker1: 1\n        tracker2: 2"
+        );
     }
 }

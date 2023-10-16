@@ -1,5 +1,6 @@
 #![feature(let_chains)]
 
+mod input;
 mod roll;
 mod tracker;
 
