@@ -9,9 +9,9 @@ pub struct Input {
 }
 
 impl Input {
-    const PROMPT: &str = ">";
+    const PROMPT: &str = "> ";
 
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             editor: rustyline::DefaultEditor::new().unwrap(),
         }
