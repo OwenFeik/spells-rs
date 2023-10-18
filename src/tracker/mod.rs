@@ -2,42 +2,33 @@ use std::fmt::Display;
 
 use crate::input;
 
-const INDENT_SIZE: usize = 4;
+mod commands;
 
-enum TrackerInner {
-    Tracker(i32),
-    Collection(Vec<Tracker>),
-}
+pub use self::commands::handle;
+
+const INDENT_SIZE: usize = 4;
 
 pub struct Tracker {
     name: String,
-    inner: TrackerInner,
+    value: Option<i32>,
+    children: Vec<Tracker>,
 }
 
 impl Tracker {
-    fn make(name: &str, inner: TrackerInner) -> Self {
+    fn make(name: &str, value: Option<i32>) -> Self {
         Self {
             name: name.to_string(),
-            inner,
+            value,
+            children: Vec::new(),
         }
     }
 
     pub fn new(name: &str) -> Self {
-        Self::make(name, TrackerInner::Tracker(0))
+        Self::make(name, None)
     }
 
-    pub fn add(&mut self, child: Tracker) -> String {
-        if let TrackerInner::Collection(children) = &mut self.inner {
-            let child_name = child.name.clone();
-            children.push(child);
-            format!("Added new tracker {child_name} to {}.", self.name())
-        } else {
-            format!("Can't add child to non-collection tracker {}.", self.name())
-        }
-    }
-
-    pub fn collection(name: &str) -> Self {
-        Self::make(name, TrackerInner::Collection(Vec::new()))
+    pub fn add(&mut self, child: Tracker) {
+        self.children.push(child);
     }
 
     pub fn name(&self) -> &str {
@@ -45,34 +36,36 @@ impl Tracker {
     }
 
     pub fn child(&self, name: &str) -> Option<&Tracker> {
-        self.children().iter().find(|c| c.name() == name)
+        self.children.iter().find(|c| c.name() == name)
     }
 
-    fn children(&self) -> &[Tracker] {
-        match &self.inner {
-            TrackerInner::Tracker(_) => &[],
-            TrackerInner::Collection(children) => children,
-        }
+    pub fn print(&self) {
+        println!("{self}");
     }
 
     fn format(&self, indent: usize) -> String {
-        let heading = format!("{}{}:", " ".repeat(indent * INDENT_SIZE), self.name());
-        match &self.inner {
-            TrackerInner::Tracker(value) => format!("{heading} {value}"),
-            TrackerInner::Collection(children) => children
+        let mut heading = format!("{}{}:", " ".repeat(indent * INDENT_SIZE), self.name());
+        if let Some(value) = self.value {
+            heading.push_str(&format!(" {value}"));
+        }
+
+        if self.children.is_empty() {
+            heading
+        } else {
+            self.children
                 .iter()
                 .map(|c| c.format(indent + 1))
                 .fold(heading, |mut s, c| {
                     s.push('\n');
                     s.push_str(&c);
                     s
-                }),
+                })
         }
     }
 
     fn handle(&self, input: &str) {
         match input::command(input) {
-            "" => println!("{self}"),
+            "" => self.print(),
             _ => {}
         };
     }
@@ -91,11 +84,7 @@ mod test {
     #[test]
     fn test_format_tracker() {
         assert_eq!(
-            Tracker {
-                name: "tracker".to_string(),
-                inner: TrackerInner::Tracker(42),
-            }
-            .format(2),
+            Tracker::make("tracker", Some(42)).format(2),
             "        tracker: 42"
         );
     }
@@ -105,16 +94,11 @@ mod test {
         assert_eq!(
             Tracker {
                 name: "collection".to_string(),
-                inner: TrackerInner::Collection(vec![
-                    Tracker {
-                        name: "tracker1".to_string(),
-                        inner: TrackerInner::Tracker(1)
-                    },
-                    Tracker {
-                        name: "tracker2".to_string(),
-                        inner: TrackerInner::Tracker(2)
-                    }
-                ])
+                value: None,
+                children: vec![
+                    Tracker::make("tracker1", Some(1)),
+                    Tracker::make("tracker2", Some(2)),
+                ]
             }
             .format(1),
             "    collection:\n        tracker1: 1\n        tracker2: 2"
