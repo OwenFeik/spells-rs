@@ -19,14 +19,14 @@ impl Context {
     }
 
     fn tracker(&self, name: &str) -> Option<&tracker::Tracker> {
-        self.trackers.child(name)
+        self.trackers.get(name)
     }
 }
 
 fn handle(cx: &mut Context, text: &str) {
     if commands::handle(cx, text) {
     } else if let Some(tracker) = cx.tracker(input::command(text)) {
-        tracker.print();
+        tracker.handle(input::consume(text, tracker.name()));
     } else {
         match roll::roll(text) {
             Ok(roll) => println!("{roll}"),

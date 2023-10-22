@@ -35,8 +35,19 @@ impl Tracker {
         &self.name
     }
 
-    pub fn child(&self, name: &str) -> Option<&Tracker> {
-        self.children.iter().find(|c| c.name() == name)
+    pub fn get(&self, name: &str) -> Option<&Tracker> {
+        let child = self.children.iter().find(|c| c.name() == name);
+        if child.is_some() {
+            child
+        } else {
+            for child in &self.children {
+                let descendent = child.get(name);
+                if descendent.is_some() {
+                    return descendent;
+                }
+            }
+            None
+        }
     }
 
     pub fn print(&self) {
@@ -63,7 +74,7 @@ impl Tracker {
         }
     }
 
-    fn handle(&self, input: &str) {
+    pub fn handle(&self, input: &str) {
         match input::command(input) {
             "" => self.print(),
             _ => {}
@@ -103,5 +114,15 @@ mod test {
             .format(1),
             "    collection:\n        tracker1: 1\n        tracker2: 2"
         );
+    }
+
+    #[test]
+    fn test_get() {
+        let mut root = Tracker::new("trackers");
+        root.add(Tracker::new("child1"));
+        let mut child2 = Tracker::new("child2");
+        child2.add(Tracker::new("grandchild"));
+        root.add(child2);
+        assert!(root.get("grandchild").is_some());
     }
 }

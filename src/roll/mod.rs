@@ -91,6 +91,18 @@ impl Display for Outcome {
     }
 }
 
+pub struct Statement(expr::Ast);
+
+impl Statement {
+    pub fn eval(&self) -> Result<Outcome, String> {
+        eval::eval(&self.0)
+    }
+}
+
+pub fn parse(input: &str) -> Result<Statement, String> {
+    Ok(Statement(expr::lex(&token::tokenise(input))?))
+}
+
 pub fn roll(input: &str) -> Result<Outcome, String> {
-    eval::eval(&expr::lex(&token::tokenise(input))?)
+    parse(input)?.eval()
 }
