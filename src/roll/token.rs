@@ -13,12 +13,12 @@ pub enum Token {
     Advantage,
     Disadvantage,
     Sort,
+    Identifier(String),
 }
 
 impl Token {
     fn from(c: char) -> Option<Self> {
         match c {
-            _ if c.is_numeric() => c.to_digit(10).map(Self::Natural),
             '(' => Some(Self::ParenOpen),
             ')' => Some(Self::ParenClose),
             '+' => Some(Self::Plus),
@@ -30,6 +30,9 @@ impl Token {
             'a' => Some(Self::Advantage),
             'd' => Some(Self::Disadvantage),
             's' => Some(Self::Sort),
+            '_' => Some(Self::Identifier(String::from("_"))),
+            _ if c.is_numeric() => c.to_digit(10).map(Self::Natural),
+            _ if c.is_alphabetic() => Some(Self::Identifier(String::from(c))),
             _ => None,
         }
     }
