@@ -169,6 +169,7 @@ impl Operator {
 
     fn from(token: &Token) -> ParseResult<Self> {
         match token {
+            Token::Identifier(name) => err(format!("{name} is not an operator.")),
             Token::Natural(_) => err("Natural is not an operator."),
             Token::Roll(_, _) => err("Roll is not an operator."),
             Token::ParenOpen => err("( is not an operator."),
@@ -233,6 +234,7 @@ impl<'a> Parser<'a> {
 
     fn term(&mut self) -> ParseResult<()> {
         let res = match *self.next()? {
+            Token::Identifier(_) => { Ok(()) }
             Token::Natural(n) => {
                 self.operands.push(self.ast.add(Expr::Natural(n)));
                 Ok(())

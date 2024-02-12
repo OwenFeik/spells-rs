@@ -1,5 +1,6 @@
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
+    Identifier(String),
     Natural(u32),
     Roll(u32, u32),
     ParenOpen,
@@ -13,7 +14,6 @@ pub enum Token {
     Advantage,
     Disadvantage,
     Sort,
-    Identifier(String),
 }
 
 impl Token {
@@ -37,6 +37,25 @@ impl Token {
         }
     }
 
+    fn char(&self) -> char {
+        match self {
+            Token::Identifier(_) => '!',
+            Token::Natural(_) => '#',
+            Token::Roll(_, _) => '%',
+            Token::ParenOpen => '(',
+            Token::ParenClose => ')',
+            Token::Plus => '+',
+            Token::Minus => '-',
+            Token::Times => '*',
+            Token::Divide => '/',
+            Token::Exp => '^',
+            Token::Keep => 'k',
+            Token::Advantage => 'a',
+            Token::Disadvantage => 'd',
+            Token::Sort => 's',
+        }
+    }
+
     fn consume(self, c: char) -> (Option<Self>, Option<Self>) {
         if let Some(n) = c.to_digit(10) {
             match self {
@@ -47,9 +66,18 @@ impl Token {
             }
         }
 
-        if c == 'd' {
-            if let Self::Natural(v) = self {
-                return (None, Some(Self::Roll(v, 0)));
+        if c.is_alphabetic() {
+            match self {
+                Self::Natural(v) if c == 'd' => return (None, Some(Self::Roll(v, 0))),
+                Self::Identifier(mut name) => {
+                    name.push(c);
+                    return (None, Some(Self::Identifier(name)));
+                }
+                _ if self.char().is_alphabetic() => {
+                    let name = [self.char(), c].iter().collect();
+                    return (None, Some(Self::Identifier(name)));
+                }
+                _ => {}
             }
         }
 
@@ -137,6 +165,35 @@ mod test {
                 Token::Keep,
                 Token::Natural(5),
                 Token::ParenClose
+            ]
+        )
+    }
+
+    #[test]
+    fn test_tokenise_identifiers() {
+        assert_eq!(
+            tokenise("d20 + PROF + STR + 1"),
+            vec![
+                Token::Roll(1, 20),
+                Token::Plus,
+                Token::Identifier("PROF".to_string()),
+                Token::Plus,
+                Token::Identifier("STR".to_string()),
+                Token::Plus,
+                Token::Natural(1)
+            ]
+        )
+    }
+
+    #[test]
+    fn test_tokenise_ops_identifiers() {
+        assert_eq!(
+            tokenise("dword d aword a"),
+            vec![
+                Token::Identifier("dword".to_string()),
+                Token::Disadvantage,
+                Token::Identifier("aword".to_string()),
+                Token::Advantage,
             ]
         )
     }
