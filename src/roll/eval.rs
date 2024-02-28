@@ -1,4 +1,4 @@
-use std::convert::TryInto;
+use std::{collections::HashMap, convert::TryInto};
 
 use super::{
     expr::{Ast, Expr},
@@ -9,6 +9,26 @@ type EvalResult<T> = Result<T, String>;
 
 fn err<T, S: ToString>(msg: S) -> EvalResult<T> {
     Err(msg.to_string())
+}
+
+struct Context {
+    variables: HashMap<String, Value>,
+}
+
+impl Context {
+    fn new() -> Self {
+        Self {
+            variables: HashMap::new(),
+        }
+    }
+
+    fn get(&self, name: &str) -> EvalResult<Value> {
+        if let Some(val) = self.variables.get(name) {
+            Ok(val.clone())
+        } else {
+            err(format!("Undefined variable: {name}."))
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -234,7 +254,9 @@ impl ExprEval {
                 for (i, v) in values.iter().enumerate() {
                     if smallest.is_none() {
                         smallest = Some((i, *v));
-                    } else if let Some((_, sv)) = smallest && sv > *v {
+                    } else if let Some((_, sv)) = smallest
+                        && sv > *v
+                    {
                         smallest = Some((i, *v));
                     }
                 }
@@ -261,21 +283,24 @@ impl ExprEval {
     }
 }
 
-fn evaluate(ast: &Ast, index: usize) -> EvalResult<ExprEval> {
+fn evaluate(ast: &Ast, context: &Context, index: usize) -> EvalResult<ExprEval> {
     if let Some(expr) = ast.get(index) {
-        match *expr {
-            Expr::Add(lhs, rhs) => evaluate(ast, lhs)?.add(evaluate(ast, rhs)?),
-            Expr::Sub(lhs, rhs) => evaluate(ast, lhs)?.sub(evaluate(ast, rhs)?),
-            Expr::Mul(lhs, rhs) => evaluate(ast, lhs)?.mul(evaluate(ast, rhs)?),
-            Expr::Div(lhs, rhs) => evaluate(ast, lhs)?.div(evaluate(ast, rhs)?),
-            Expr::Exp(lhs, rhs) => evaluate(ast, lhs)?.exp(evaluate(ast, rhs)?),
-            Expr::Neg(arg) => evaluate(ast, arg)?.neg(),
-            Expr::Adv(arg) => evaluate(ast, arg)?.adv(),
-            Expr::DisAdv(arg) => evaluate(ast, arg)?.disadv(),
-            Expr::Sort(arg) => evaluate(ast, arg)?.sort(),
-            Expr::Keep(lhs, rhs) => evaluate(ast, lhs)?.keep(evaluate(ast, rhs)?),
-            Expr::Roll(q, d) => Ok(ExprEval::roll(q, d)),
-            Expr::Natural(v) => Ok(ExprEval::nat(v)),
+        match expr {
+            Expr::Add(lhs, rhs) => evaluate(ast, context, *lhs)?.add(evaluate(ast, context, *rhs)?),
+            Expr::Sub(lhs, rhs) => evaluate(ast, context, *lhs)?.sub(evaluate(ast, context, *rhs)?),
+            Expr::Mul(lhs, rhs) => evaluate(ast, context, *lhs)?.mul(evaluate(ast, context, *rhs)?),
+            Expr::Div(lhs, rhs) => evaluate(ast, context, *lhs)?.div(evaluate(ast, context, *rhs)?),
+            Expr::Exp(lhs, rhs) => evaluate(ast, context, *lhs)?.exp(evaluate(ast, context, *rhs)?),
+            Expr::Neg(arg) => evaluate(ast, context, *arg)?.neg(),
+            Expr::Adv(arg) => evaluate(ast, context, *arg)?.adv(),
+            Expr::DisAdv(arg) => evaluate(ast, context, *arg)?.disadv(),
+            Expr::Sort(arg) => evaluate(ast, context, *arg)?.sort(),
+            Expr::Keep(lhs, rhs) => {
+                evaluate(ast, context, *lhs)?.keep(evaluate(ast, context, *rhs)?)
+            }
+            Expr::Roll(q, d) => Ok(ExprEval::roll(*q, *d)),
+            Expr::Natural(v) => Ok(ExprEval::nat(*v)),
+            Expr::Var(name) => context.get(&name).map(ExprEval::new),
         }
     } else {
         err("Attempted to evaluate expression which did not exist.")
@@ -283,7 +308,8 @@ fn evaluate(ast: &Ast, index: usize) -> EvalResult<ExprEval> {
 }
 
 pub fn eval(ast: &Ast) -> EvalResult<Outcome> {
-    let (expval, value) = evaluate(ast, ast.start())?.decimal()?;
+    let context = Context::new();
+    let (expval, value) = evaluate(ast, &context, ast.start())?.decimal()?;
     Ok(Outcome {
         value,
         rolls: expval.rolls,
@@ -300,19 +326,19 @@ mod test {
         lex(&tokenise(input)).unwrap()
     }
 
+    fn eval_value(ast: Ast) -> Value {
+        evaluate(&ast, &Context::new(), ast.start()).unwrap().value
+    }
+
     #[test]
     fn test_natural() {
-        let ast = parse("16");
-        let value = evaluate(&ast, ast.start()).unwrap().value;
-        assert_eq!(value, Value::Natural(16));
+        assert_eq!(eval_value(parse("16")), Value::Natural(16));
     }
 
     #[test]
     fn test_roll() {
-        let ast = parse("4d12");
-        let value = evaluate(&ast, ast.start()).unwrap().value;
         assert_eq!(
-            value,
+            eval_value(parse("4d12")),
             Value::Roll(Roll {
                 quantity: 4,
                 die: 12,
@@ -324,24 +350,16 @@ mod test {
 
     #[test]
     fn test_add() {
-        let ast = parse("5 + 4 + 3 + 2 + 1");
         assert_eq!(
-            evaluate(&ast, ast.start())
-                .unwrap()
-                .value
-                .natural()
-                .unwrap(),
+            eval_value(parse("5 + 4 + 3 + 2 + 1")).natural().unwrap(),
             5 + 4 + 3 + 2 + 1
         );
     }
 
     #[test]
     fn test_arithmetic() {
-        let ast = parse("5 * 4 ^ 2 / 3 + 2 - 1");
         assert_eq!(
-            evaluate(&ast, ast.start())
-                .unwrap()
-                .value
+            eval_value(parse("5 * 4 ^ 2 / 3 + 2 - 1"))
                 .decimal()
                 .unwrap(),
             5.0 * 4.0_f32.powf(2.0) / 3.0 + 2.0 - 1.0

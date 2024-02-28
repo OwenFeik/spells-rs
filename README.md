@@ -5,6 +5,22 @@
 * Application is the default operation.
     * `func(3.5)` is equivalent to `func 3.5`. Should be parsed as an identifier
         followed by a bracketed expression which is the first argument.
+* Declare functions with `:=`, declare constants with `=`.
+    * A function is stored as a parsed expression, and evaluated when
+        referenced.
+    * A constant is evaluated immediately and the resultant value is stored in
+        the variable specified.
+
+```
+> sub a b := a - b
+sub(a, b) = a - b
+> sub(a, b) := a - b
+sub(a, b) = a - b
+> sixteen = sub (4 * 5) 4
+sixteen = 16
+> sixteen + 3
+19
+```
 
 ## Primitives
 * Rolls. These are stored as a `(die, quantity)` pair.

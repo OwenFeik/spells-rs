@@ -24,6 +24,7 @@ pub enum Expr {
     Keep(usize, usize),
     Roll(u32, u32),
     Natural(u32),
+    Var(String),
 }
 
 #[derive(Debug)]
@@ -217,7 +218,9 @@ impl<'a> Parser<'a> {
     fn expr(&mut self) -> ParseResult<()> {
         self.term()?;
 
-        while let Some(Ok(op)) = self.peek().map(Operator::from) && op.is_binary() {
+        while let Some(Ok(op)) = self.peek().map(Operator::from)
+            && op.is_binary()
+        {
             self.push_operator(op);
             self.next()?; // throw away token
             self.term()?;
@@ -234,7 +237,7 @@ impl<'a> Parser<'a> {
 
     fn term(&mut self) -> ParseResult<()> {
         let res = match *self.next()? {
-            Token::Identifier(_) => { Ok(()) }
+            Token::Identifier(_) => Ok(()),
             Token::Natural(n) => {
                 self.operands.push(self.ast.add(Expr::Natural(n)));
                 Ok(())
@@ -266,7 +269,9 @@ impl<'a> Parser<'a> {
         };
         res?;
 
-        while let Some(Ok(op)) = self.peek().map(Operator::from) && op.is_unary_postfix() {
+        while let Some(Ok(op)) = self.peek().map(Operator::from)
+            && op.is_unary_postfix()
+        {
             self.push_operator(op);
             self.next()?; // throw away token
         }
@@ -487,7 +492,9 @@ mod test {
     #[test]
     fn test_binary_operators() {
         let token = Some(&Token::Plus);
-        if let Some(Ok(op)) = token.map(Operator::from) && op.is_binary() {
+        if let Some(Ok(op)) = token.map(Operator::from)
+            && op.is_binary()
+        {
             assert!(matches!(op, Operator::Add));
         } else {
             panic!();
