@@ -100,7 +100,7 @@ impl Statement {
 }
 
 pub fn parse(input: &str) -> Result<Statement, String> {
-    Ok(Statement(expr::lex(&token::tokenise(input))?))
+    Ok(Statement(expr::lex(&token::tokenise(input)?)?))
 }
 
 pub fn roll(input: &str) -> Result<Outcome, String> {

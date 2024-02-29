@@ -25,6 +25,7 @@ pub enum Expr {
     Roll(u32, u32),
     Natural(u32),
     Var(String),
+    Call(String, Vec<usize>),
 }
 
 #[derive(Debug)]
@@ -63,6 +64,8 @@ fn err<T, S: ToString>(msg: S) -> ParseResult<T> {
 #[derive(Clone, Copy, Debug)]
 enum Operator {
     Sentinel,
+    Define,
+    Assign,
     Add,
     Sub,
     Mul,
@@ -79,22 +82,26 @@ impl Operator {
     fn precedence(&self) -> u8 {
         match self {
             Operator::Sentinel => 0,
-            Operator::Add => 1,
-            Operator::Sub => 1,
-            Operator::Mul => 2,
-            Operator::Div => 2,
-            Operator::Exp => 4,
-            Operator::Neg => 3,
-            Operator::Keep => 5,
-            Operator::Adv => 3,
-            Operator::DisAdv => 3,
-            Operator::Sort => 3,
+            Operator::Assign => 1,
+            Operator::Define => 1,
+            Operator::Add => 2,
+            Operator::Sub => 2,
+            Operator::Mul => 3,
+            Operator::Div => 3,
+            Operator::Exp => 5,
+            Operator::Neg => 4,
+            Operator::Keep => 6,
+            Operator::Adv => 4,
+            Operator::DisAdv => 4,
+            Operator::Sort => 4,
         }
     }
 
     fn left_associative(&self) -> bool {
         match self {
             Operator::Sentinel => false,
+            Operator::Define => false,
+            Operator::Assign => false,
             Operator::Add => true,
             Operator::Sub => true,
             Operator::Mul => true,
@@ -175,6 +182,8 @@ impl Operator {
             Token::Roll(_, _) => err("Roll is not an operator."),
             Token::ParenOpen => err("( is not an operator."),
             Token::ParenClose => err(") is not an operator."),
+            Token::Define => Ok(Self::Define),
+            Token::Assign => Ok(Self::Assign),
             Token::Plus => Ok(Self::Add),
             Token::Minus => Ok(Self::Sub),
             Token::Times => Ok(Self::Mul),
@@ -236,8 +245,11 @@ impl<'a> Parser<'a> {
     }
 
     fn term(&mut self) -> ParseResult<()> {
-        let res = match *self.next()? {
-            Token::Identifier(_) => Ok(()),
+        let res = match self.next()?.clone() {
+            Token::Identifier(name) => {
+                self.operands.push(self.ast.add(Expr::Var(name)));
+                Ok(())
+            }
             Token::Natural(n) => {
                 self.operands.push(self.ast.add(Expr::Natural(n)));
                 Ok(())
@@ -356,6 +368,10 @@ mod test {
 
     fn exprs(ast: &Ast) -> &[Expr] {
         &ast.0
+    }
+
+    fn check_exprs(input: &str, expected: Vec<Expr>) {
+        assert_eq!(exprs(&lex(&tokenise(input).unwrap()).unwrap()), expected)
     }
 
     fn root(ast: &Ast) -> Option<&Expr> {
@@ -546,8 +562,8 @@ mod test {
 
     #[test]
     fn test_arithmetic() {
-        assert_eq!(
-            exprs(&lex(&tokenise("4 + 3 - 2 * 5")).unwrap()),
+        check_exprs(
+            "4 + 3 - 2 * 5",
             vec![
                 Expr::Natural(4),
                 Expr::Natural(3),
@@ -555,23 +571,45 @@ mod test {
                 Expr::Natural(2),
                 Expr::Natural(5),
                 Expr::Mul(3, 4),
-                Expr::Sub(2, 5)
-            ]
+                Expr::Sub(2, 5),
+            ],
         );
     }
 
     #[test]
     fn test_parse_exponent() {
-        assert_eq!(
-            exprs(&lex(&tokenise("-5^3*3")).unwrap()),
+        check_exprs(
+            "-5^3*3",
             vec![
                 Expr::Natural(5),
                 Expr::Natural(3),
                 Expr::Exp(0, 1),
                 Expr::Neg(2),
                 Expr::Natural(3),
-                Expr::Mul(3, 4)
-            ]
+                Expr::Mul(3, 4),
+            ],
         );
+    }
+
+    #[test]
+    fn test_variables() {
+        check_exprs(
+            "var + 3",
+            vec![Expr::Var("var".into()), Expr::Natural(3), Expr::Add(0, 1)],
+        )
+    }
+
+    #[test]
+    fn test_variables_2() {
+        check_exprs(
+            "var1 * var2 ^ var3",
+            vec![
+                Expr::Var("var1".into()),
+                Expr::Var("var2".into()),
+                Expr::Var("var3".into()),
+                Expr::Exp(1, 2),
+                Expr::Mul(0, 3),
+            ],
+        )
     }
 }

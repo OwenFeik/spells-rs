@@ -1,10 +1,12 @@
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token {
     Identifier(String),
     Natural(u32),
     Roll(u32, u32),
     ParenOpen,
     ParenClose,
+    Assign,
+    Define,
     Plus,
     Minus,
     Times,
@@ -21,6 +23,8 @@ impl Token {
         match c {
             '(' => Some(Self::ParenOpen),
             ')' => Some(Self::ParenClose),
+            '=' => Some(Self::Assign),
+            ':' => Some(Self::Define),
             '+' => Some(Self::Plus),
             '-' => Some(Self::Minus),
             '*' => Some(Self::Times),
@@ -44,6 +48,8 @@ impl Token {
             Token::Roll(_, _) => '%',
             Token::ParenOpen => '(',
             Token::ParenClose => ')',
+            Token::Assign => '=',
+            Token::Define => ':',
             Token::Plus => '+',
             Token::Minus => '-',
             Token::Times => '*',
@@ -56,43 +62,55 @@ impl Token {
         }
     }
 
-    fn consume(self, c: char) -> (Option<Self>, Option<Self>) {
+    fn consume(self, c: char) -> Result<(Option<Self>, Option<Self>), String> {
         if let Some(n) = c.to_digit(10) {
             match self {
-                Self::Natural(v) => return (None, Some(Self::Natural(v * 10 + n))),
-                Self::Roll(q, s) => return (None, Some(Self::Roll(q, s * 10 + n))),
-                Self::Disadvantage => return (None, Some(Self::Roll(1, n))),
+                Self::Identifier(mut name) => {
+                    name.push(c);
+                    return Ok((None, Some(Self::Identifier(name))));
+                }
+                Self::Natural(v) => return Ok((None, Some(Self::Natural(v * 10 + n)))),
+                Self::Roll(q, s) => return Ok((None, Some(Self::Roll(q, s * 10 + n)))),
+                Self::Disadvantage => return Ok((None, Some(Self::Roll(1, n)))),
                 _ => {}
             }
         }
 
         if c.is_alphabetic() {
             match self {
-                Self::Natural(v) if c == 'd' => return (None, Some(Self::Roll(v, 0))),
+                Self::Natural(v) if c == 'd' => return Ok((None, Some(Self::Roll(v, 0)))),
                 Self::Identifier(mut name) => {
                     name.push(c);
-                    return (None, Some(Self::Identifier(name)));
+                    return Ok((None, Some(Self::Identifier(name))));
                 }
                 _ if self.char().is_alphabetic() => {
                     let name = [self.char(), c].iter().collect();
-                    return (None, Some(Self::Identifier(name)));
+                    return Ok((None, Some(Self::Identifier(name))));
                 }
                 _ => {}
             }
         }
 
-        (Some(self), Self::from(c))
+        if matches!(self, Self::Define) {
+            return if c == '=' {
+                Ok((Some(self), None)) // Define (:=) finished.
+            } else {
+                Err(format!("Unexpected character following \":\": {c}"))
+            };
+        }
+
+        Ok((Some(self), Self::from(c)))
     }
 }
 
-pub fn tokenise(input: &str) -> Vec<Token> {
+pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
 
     let mut current: Option<Token> = None;
     for c in input.chars() {
         if let Some(token) = current {
             let finished;
-            (finished, current) = token.consume(c);
+            (finished, current) = token.consume(c)?;
             if let Some(finished) = finished {
                 tokens.push(finished);
             }
@@ -102,26 +120,30 @@ pub fn tokenise(input: &str) -> Vec<Token> {
     }
 
     if let Some(current) = current {
-        if let (Some(token), _) = current.consume(' ') {
+        if let (Some(token), _) = current.consume(' ')? {
             tokens.push(token);
         }
     }
 
-    tokens
+    Ok(tokens)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
 
+    fn tok_unwrap(input: &str) -> Vec<Token> {
+        tokenise(input).unwrap()
+    }
+
     #[test]
     fn test_tokenise_roll() {
-        assert_eq!(tokenise("1d4"), vec![Token::Roll(1, 4)]);
-        assert_eq!(tokenise("d4"), vec![Token::Roll(1, 4)]);
-        assert_eq!(tokenise("8d8"), vec![Token::Roll(8, 8)]);
-        assert_eq!(tokenise("d20"), vec![Token::Roll(1, 20)]);
+        assert_eq!(tok_unwrap("1d4"), vec![Token::Roll(1, 4)]);
+        assert_eq!(tok_unwrap("d4"), vec![Token::Roll(1, 4)]);
+        assert_eq!(tok_unwrap("8d8"), vec![Token::Roll(8, 8)]);
+        assert_eq!(tok_unwrap("d20"), vec![Token::Roll(1, 20)]);
         assert_eq!(
-            tokenise("d20 d20"),
+            tok_unwrap("d20 d20"),
             vec![Token::Roll(1, 20), Token::Roll(1, 20)]
         );
     }
@@ -129,7 +151,7 @@ mod test {
     #[test]
     fn test_tokenise_ops() {
         assert_eq!(
-            tokenise("+ - * / ^"),
+            tok_unwrap("+ - * / ^"),
             vec![
                 Token::Plus,
                 Token::Minus,
@@ -139,7 +161,7 @@ mod test {
             ]
         );
         assert_eq!(
-            tokenise("a d k s"),
+            tok_unwrap("a d k s"),
             vec![
                 Token::Advantage,
                 Token::Disadvantage,
@@ -152,7 +174,7 @@ mod test {
     #[test]
     fn test_tokenise_exprs() {
         assert_eq!(
-            tokenise("(d4 * 3) + (8d8k5)"),
+            tok_unwrap("(d4 * 3) + (8d8k5)"),
             vec![
                 Token::ParenOpen,
                 Token::Roll(1, 4),
@@ -172,7 +194,7 @@ mod test {
     #[test]
     fn test_tokenise_identifiers() {
         assert_eq!(
-            tokenise("d20 + PROF + STR + 1"),
+            tok_unwrap("d20 + PROF + STR + 1"),
             vec![
                 Token::Roll(1, 20),
                 Token::Plus,
@@ -188,7 +210,7 @@ mod test {
     #[test]
     fn test_tokenise_ops_identifiers() {
         assert_eq!(
-            tokenise("dword d aword a"),
+            tok_unwrap("dword d aword a"),
             vec![
                 Token::Identifier("dword".to_string()),
                 Token::Disadvantage,

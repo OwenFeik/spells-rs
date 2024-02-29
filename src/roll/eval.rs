@@ -11,7 +11,7 @@ fn err<T, S: ToString>(msg: S) -> EvalResult<T> {
     Err(msg.to_string())
 }
 
-struct Context {
+pub struct Context {
     variables: HashMap<String, Value>,
 }
 
@@ -29,10 +29,19 @@ impl Context {
             err(format!("Undefined variable: {name}."))
         }
     }
+
+    fn call(&self, name: &str, args: &[usize], ast: &Ast) -> EvalResult<ExprEval> {
+        println!("name({args:?})");
+        Ok(ExprEval::new(Value::Natural(1)))
+    }
+
+    pub fn put<S: ToString>(&mut self, name: S, value: Value) {
+        self.variables.insert(name.to_string(), value);
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum Value {
+pub enum Value {
     Decimal(f32),
     Natural(u32),
     Outcome(RollOutcome),
@@ -301,6 +310,7 @@ fn evaluate(ast: &Ast, context: &Context, index: usize) -> EvalResult<ExprEval> 
             Expr::Roll(q, d) => Ok(ExprEval::roll(*q, *d)),
             Expr::Natural(v) => Ok(ExprEval::nat(*v)),
             Expr::Var(name) => context.get(&name).map(ExprEval::new),
+            Expr::Call(name, args) => context.call(&name, &args, ast),
         }
     } else {
         err("Attempted to evaluate expression which did not exist.")
@@ -323,7 +333,7 @@ mod test {
     use super::*;
 
     fn parse(input: &str) -> Ast {
-        lex(&tokenise(input)).unwrap()
+        lex(&tokenise(input).unwrap()).unwrap()
     }
 
     fn eval_value(ast: Ast) -> Value {
