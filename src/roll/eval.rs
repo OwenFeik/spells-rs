@@ -295,6 +295,8 @@ impl ExprEval {
 fn evaluate(ast: &Ast, context: &Context, index: usize) -> EvalResult<ExprEval> {
     if let Some(expr) = ast.get(index) {
         match expr {
+            Expr::Assign(identifier, value) => todo!(),
+            Expr::Define(identifier, definition) => todo!(),
             Expr::Add(lhs, rhs) => evaluate(ast, context, *lhs)?.add(evaluate(ast, context, *rhs)?),
             Expr::Sub(lhs, rhs) => evaluate(ast, context, *lhs)?.sub(evaluate(ast, context, *rhs)?),
             Expr::Mul(lhs, rhs) => evaluate(ast, context, *lhs)?.mul(evaluate(ast, context, *rhs)?),
@@ -309,7 +311,7 @@ fn evaluate(ast: &Ast, context: &Context, index: usize) -> EvalResult<ExprEval> 
             }
             Expr::Roll(q, d) => Ok(ExprEval::roll(*q, *d)),
             Expr::Natural(v) => Ok(ExprEval::nat(*v)),
-            Expr::Var(name) => context.get(&name).map(ExprEval::new),
+            Expr::Identifier(name) => context.get(&name).map(ExprEval::new),
             Expr::Call(name, args) => context.call(&name, &args, ast),
         }
     } else {

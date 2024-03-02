@@ -1,17 +1,18 @@
 use super::token::Token;
 
-/// Grammar
-/// expr := term { binary term }
-/// term := factor | ( expr ) | unary-prefix term | term unary-postfix
-/// binary := + | - | * | / | ^ | k
-/// unary-prefix := -
-/// unary-postfix := a | d | s | k
-/// factor := R | N
-/// R := NdN | dN
-/// N := NN | [0-9]
+// Grammar
+// expr := term { binary term }
+// term := factor | ( expr ) | unary-prefix term | term unary-postfix | call
+// binary := + | - | * | / | ^ | k | = | :=
+// call := identifier ( expr { , expr } )
+// unary-postfix := a | d | s | k
+// unary-prefix := -
+// factor := roll | number | identfifier
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
+    Assign(usize, usize),
+    Define(usize, usize),
     Add(usize, usize),
     Sub(usize, usize),
     Mul(usize, usize),
@@ -24,7 +25,7 @@ pub enum Expr {
     Keep(usize, usize),
     Roll(u32, u32),
     Natural(u32),
-    Var(String),
+    Identifier(String),
     Call(String, Vec<usize>),
 }
 
@@ -118,6 +119,8 @@ impl Operator {
     fn is_binary(&self) -> bool {
         match self {
             Operator::Sentinel => false,
+            Operator::Define => true,
+            Operator::Assign => true,
             Operator::Add => true,
             Operator::Sub => true,
             Operator::Mul => true,
@@ -133,6 +136,8 @@ impl Operator {
 
     fn binary(self, lhs: usize, rhs: usize) -> ParseResult<Expr> {
         match self {
+            Operator::Assign => Ok(Expr::Assign(lhs, rhs)),
+            Operator::Define => Ok(Expr::Define(lhs, rhs)),
             Operator::Add => Ok(Expr::Add(lhs, rhs)),
             Operator::Sub => Ok(Expr::Sub(lhs, rhs)),
             Operator::Mul => Ok(Expr::Mul(lhs, rhs)),
@@ -182,6 +187,7 @@ impl Operator {
             Token::Roll(_, _) => err("Roll is not an operator."),
             Token::ParenOpen => err("( is not an operator."),
             Token::ParenClose => err(") is not an operator."),
+            Token::Comma => err(", is not an operator."),
             Token::Define => Ok(Self::Define),
             Token::Assign => Ok(Self::Assign),
             Token::Plus => Ok(Self::Add),
@@ -247,8 +253,12 @@ impl<'a> Parser<'a> {
     fn term(&mut self) -> ParseResult<()> {
         let res = match self.next()?.clone() {
             Token::Identifier(name) => {
-                self.operands.push(self.ast.add(Expr::Var(name)));
-                Ok(())
+                if let Some(Token::ParenOpen) = self.peek() {
+                    self.call(name)
+                } else {
+                    self.operands.push(self.ast.add(Expr::Identifier(name)));
+                    Ok(())
+                }
             }
             Token::Natural(n) => {
                 self.operands.push(self.ast.add(Expr::Natural(n)));
@@ -266,6 +276,9 @@ impl<'a> Parser<'a> {
                 Ok(())
             }
             Token::ParenClose => err(") unexpected."),
+            Token::Comma => err(", unexpected."),
+            Token::Assign => err("= unexpected."),
+            Token::Define => err(":= unexpected."),
             Token::Plus => err("+ unexpected."),
             Token::Minus => {
                 self.push_operator(Operator::Neg);
@@ -289,6 +302,11 @@ impl<'a> Parser<'a> {
         }
 
         Ok(())
+    }
+
+    fn call(&mut self, name: String) -> ParseResult<()> {
+        self.next()?; // throw away open bracket.
+        todo!()
     }
 
     fn next(&mut self) -> ParseResult<&Token> {
@@ -595,7 +613,11 @@ mod test {
     fn test_variables() {
         check_exprs(
             "var + 3",
-            vec![Expr::Var("var".into()), Expr::Natural(3), Expr::Add(0, 1)],
+            vec![
+                Expr::Identifier("var".into()),
+                Expr::Natural(3),
+                Expr::Add(0, 1),
+            ],
         )
     }
 
@@ -604,11 +626,54 @@ mod test {
         check_exprs(
             "var1 * var2 ^ var3",
             vec![
-                Expr::Var("var1".into()),
-                Expr::Var("var2".into()),
-                Expr::Var("var3".into()),
+                Expr::Identifier("var1".into()),
+                Expr::Identifier("var2".into()),
+                Expr::Identifier("var3".into()),
                 Expr::Exp(1, 2),
                 Expr::Mul(0, 3),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_assignment() {
+        check_exprs(
+            "var = 2 + 3",
+            vec![
+                Expr::Identifier("var".into()),
+                Expr::Natural(2),
+                Expr::Natural(3),
+                Expr::Add(1, 2),
+                Expr::Assign(0, 3),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_define_assign() {
+        check_exprs(
+            "fn := var = 1 + 2",
+            vec![
+                Expr::Identifier("fn".into()),
+                Expr::Identifier("var".into()),
+                Expr::Natural(1),
+                Expr::Natural(2),
+                Expr::Add(2, 3),
+                Expr::Assign(1, 4),
+                Expr::Define(0, 5),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_call() {
+        check_exprs(
+            "fn(1, 2, 3)",
+            vec![
+                Expr::Natural(1),
+                Expr::Natural(2),
+                Expr::Natural(3),
+                Expr::Call("fn".into(), vec![0, 1, 2]),
             ],
         )
     }

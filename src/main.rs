@@ -1,5 +1,6 @@
 #![feature(iterator_try_collect)]
 #![feature(let_chains)]
+#![allow(unused)]
 
 mod input;
 mod roll;

@@ -5,6 +5,7 @@ pub enum Token {
     Roll(u32, u32),
     ParenOpen,
     ParenClose,
+    Comma,
     Assign,
     Define,
     Plus,
@@ -23,6 +24,7 @@ impl Token {
         match c {
             '(' => Some(Self::ParenOpen),
             ')' => Some(Self::ParenClose),
+            ',' => Some(Self::Comma),
             '=' => Some(Self::Assign),
             ':' => Some(Self::Define),
             '+' => Some(Self::Plus),
@@ -48,6 +50,7 @@ impl Token {
             Token::Roll(_, _) => '%',
             Token::ParenOpen => '(',
             Token::ParenClose => ')',
+            Token::Comma => ',',
             Token::Assign => '=',
             Token::Define => ':',
             Token::Plus => '+',
@@ -130,6 +133,8 @@ pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
 
 #[cfg(test)]
 mod test {
+    use std::vec;
+
     use super::*;
 
     fn tok_unwrap(input: &str) -> Vec<Token> {
@@ -216,6 +221,45 @@ mod test {
                 Token::Disadvantage,
                 Token::Identifier("aword".to_string()),
                 Token::Advantage,
+            ]
+        )
+    }
+
+    #[test]
+    fn test_tokenise_call() {
+        assert_eq!(
+            tok_unwrap("function(arg1, 3 + 2, arg2, (2 ^ 3))"),
+            vec![
+                Token::Identifier("function".into()),
+                Token::ParenOpen,
+                Token::Identifier("arg1".into()),
+                Token::Comma,
+                Token::Natural(3),
+                Token::Plus,
+                Token::Natural(2),
+                Token::Comma,
+                Token::Identifier("arg2".into()),
+                Token::Comma,
+                Token::ParenOpen,
+                Token::Natural(2),
+                Token::Exp,
+                Token::Natural(3),
+                Token::ParenClose,
+                Token::ParenClose,
+            ]
+        )
+    }
+
+    #[test]
+    fn test_tokenise_assign_define() {
+        assert_eq!(
+            tok_unwrap("fn := var = 2"),
+            vec![
+                Token::Identifier("fn".into()),
+                Token::Define,
+                Token::Identifier("var".into()),
+                Token::Assign,
+                Token::Natural(2)
             ]
         )
     }
