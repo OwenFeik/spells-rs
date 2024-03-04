@@ -230,8 +230,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expr(&mut self) -> ParseResult<()> {
-        self.term()?;
+    fn expr(&mut self) -> ParseResult<usize> {
+        let mut id = self.term()?;
 
         while let Some(Ok(op)) = self.peek().map(Operator::from)
             && op.is_binary()
@@ -244,36 +244,31 @@ impl<'a> Parser<'a> {
         while !matches!(self.operators.last(), Some(Operator::Sentinel))
             && !self.operators.is_empty()
         {
-            self.pop_operator()?;
+            id = self.pop_operator()?;
         }
 
-        Ok(())
+        Ok(id)
     }
 
-    fn term(&mut self) -> ParseResult<()> {
-        let res = match self.next()?.clone() {
+    fn term(&mut self) -> ParseResult<usize> {
+        let id = match self.next()?.clone() {
             Token::Identifier(name) => {
                 if let Some(Token::ParenOpen) = self.peek() {
                     self.call(name)
                 } else {
-                    self.operands.push(self.ast.add(Expr::Identifier(name)));
-                    Ok(())
+                    let id = self.ast.add(Expr::Identifier(name));
+                    self.operands.push(id);
+                    Ok(id)
                 }
             }
-            Token::Natural(n) => {
-                self.operands.push(self.ast.add(Expr::Natural(n)));
-                Ok(())
-            }
-            Token::Roll(q, d) => {
-                self.operands.push(self.ast.add(Expr::Roll(q, d)));
-                Ok(())
-            }
+            Token::Natural(n) => Ok(self.push_operand(Expr::Natural(n))),
+            Token::Roll(q, d) => Ok(self.push_operand(Expr::Roll(q, d))),
             Token::ParenOpen => {
                 self.operators.push(Operator::Sentinel);
-                self.expr()?;
+                let id = self.expr()?;
                 self.expect(Token::ParenClose)?;
                 self.operators.pop();
-                Ok(())
+                Ok(id)
             }
             Token::ParenClose => err(") unexpected."),
             Token::Comma => err(", unexpected."),
@@ -291,8 +286,7 @@ impl<'a> Parser<'a> {
             Token::Advantage => err("a unexpected."),
             Token::Disadvantage => err("d unexpected."),
             Token::Sort => err("s unexpected."),
-        };
-        res?;
+        }?;
 
         while let Some(Ok(op)) = self.peek().map(Operator::from)
             && op.is_unary_postfix()
@@ -301,12 +295,21 @@ impl<'a> Parser<'a> {
             self.next()?; // throw away token
         }
 
-        Ok(())
+        Ok(id)
     }
 
-    fn call(&mut self, name: String) -> ParseResult<()> {
-        self.next()?; // throw away open bracket.
-        todo!()
+    fn call(&mut self, name: String) -> ParseResult<usize> {
+        self.expect(Token::ParenOpen)?;
+        let mut args = Vec::new();
+        if !matches!(self.peek(), Some(Token::ParenClose)) {
+            args.push(self.expr()?);
+            while matches!(self.peek(), Some(Token::Comma)) {
+                self.expect(Token::Comma)?;
+                args.push(self.expr()?);
+            }
+        }
+        self.expect(Token::ParenClose)?;
+        Ok(self.push_operand(Expr::Call(name, args)))
     }
 
     fn next(&mut self) -> ParseResult<&Token> {
@@ -339,17 +342,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn pop_operator(&mut self) -> ParseResult<()> {
+    fn pop_operator(&mut self) -> ParseResult<usize> {
         if let Some(op) = self.operators.pop() {
             if op.is_binary() {
                 let rhs = self.pop_operand()?;
                 let lhs = self.pop_operand()?;
-                self.push_operand(op.binary(lhs, rhs)?);
-                Ok(())
+                Ok(self.push_operand(op.binary(lhs, rhs)?))
             } else if op.is_unary() {
                 let operand = self.pop_operand()?;
-                self.push_operand(op.unary(operand)?);
-                Ok(())
+                Ok(self.push_operand(op.unary(operand)?))
             } else {
                 err("Attempted to pop Sentinel operator.")
             }
@@ -358,8 +359,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn push_operand(&mut self, operand: Expr) {
-        self.operands.push(self.ast.add(operand));
+    fn push_operand(&mut self, operand: Expr) -> usize {
+        let id = self.ast.add(operand);
+        self.operands.push(id);
+        id
     }
 
     fn push_operator(&mut self, op: Operator) {
@@ -674,6 +677,38 @@ mod test {
                 Expr::Natural(2),
                 Expr::Natural(3),
                 Expr::Call("fn".into(), vec![0, 1, 2]),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_call_empty() {
+        check_exprs("fn()", vec![Expr::Call("fn".into(), Vec::new())])
+    }
+
+    #[test]
+    fn test_call_nested() {
+        check_exprs(
+            "outer(inner1(), inner2(3))",
+            vec![
+                Expr::Call("inner1".into(), Vec::new()),
+                Expr::Natural(3),
+                Expr::Call("inner2".into(), vec![1]),
+                Expr::Call("outer".into(), vec![0, 2]),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_call_arithmetic() {
+        check_exprs(
+            "5 + fn() * 2",
+            vec![
+                Expr::Natural(5),
+                Expr::Call("fn".into(), Vec::new()),
+                Expr::Natural(2),
+                Expr::Mul(1, 2),
+                Expr::Add(0, 3),
             ],
         )
     }
