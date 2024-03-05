@@ -9,10 +9,11 @@ use super::token::Token;
 // unary-prefix := -
 // factor := roll | number | identfifier
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
     Assign(usize, usize),
     Define(usize, usize),
+    Call(String, Vec<usize>),
     Add(usize, usize),
     Sub(usize, usize),
     Mul(usize, usize),
@@ -26,7 +27,61 @@ pub enum Expr {
     Roll(u32, u32),
     Natural(u32),
     Identifier(String),
-    Call(String, Vec<usize>),
+}
+
+impl Expr {
+    fn renumber_binary(&self, lhs: usize, rhs: usize) -> Self {
+        match self {
+            Expr::Assign(_, _) => Expr::Assign(lhs, rhs),
+            Expr::Define(_, _) => Expr::Define(lhs, rhs),
+            Expr::Add(_, _) => Expr::Add(lhs, rhs),
+            Expr::Sub(_, _) => Expr::Sub(lhs, rhs),
+            Expr::Mul(_, _) => Expr::Mul(lhs, rhs),
+            Expr::Div(_, _) => Expr::Div(lhs, rhs),
+            Expr::Exp(_, _) => Expr::Exp(lhs, rhs),
+            Expr::Keep(_, _) => Expr::Keep(lhs, rhs),
+            _ => self.clone(),
+        }
+    }
+
+    fn renumber_unary(&self, arg: usize) -> Self {
+        match self {
+            Expr::Neg(_) => Expr::Neg(arg),
+            Expr::Adv(_) => Expr::Adv(arg),
+            Expr::DisAdv(_) => Expr::DisAdv(arg),
+            Expr::Sort(_) => Expr::Sort(arg),
+            _ => self.clone(),
+        }
+    }
+
+    fn copy(&self, from: &Ast, to: &mut Ast) -> Option<usize> {
+        match self {
+            &Expr::Assign(lhs, rhs)
+            | &Expr::Define(lhs, rhs)
+            | &Expr::Add(lhs, rhs)
+            | &Expr::Sub(lhs, rhs)
+            | &Expr::Mul(lhs, rhs)
+            | &Expr::Div(lhs, rhs)
+            | &Expr::Exp(lhs, rhs)
+            | &Expr::Keep(lhs, rhs) => {
+                let lhs = from.get(lhs)?.copy(from, to)?;
+                let rhs = from.get(rhs)?.copy(from, to)?;
+                Some(to.add(self.renumber_binary(lhs, rhs)))
+            }
+            &Expr::Neg(arg) | &Expr::Adv(arg) | &Expr::DisAdv(arg) | &Expr::Sort(arg) => {
+                let arg = from.get(arg)?.copy(from, to)?;
+                Some(to.add(self.renumber_unary(arg)))
+            }
+            Expr::Call(name, args) => {
+                let mut new_args = Vec::new();
+                for &arg in args {
+                    new_args.push(from.get(arg)?.copy(from, to)?);
+                }
+                Some(to.add(Expr::Call(name.clone(), new_args)))
+            }
+            Expr::Roll(_, _) | Expr::Natural(_) | Expr::Identifier(_) => Some(to.add(self.clone())),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -51,6 +106,60 @@ impl Ast {
             0
         } else {
             self.0.len() - 1
+        }
+    }
+
+    pub fn subtree(&self, root: usize) -> Option<Ast> {
+        let mut subtree = Ast::new();
+        self.get(root)?.copy(self, &mut subtree);
+        Some(subtree)
+    }
+
+    pub fn render(&self) -> String {
+        self._render(self.start())
+    }
+
+    fn _render(&self, id: usize) -> String {
+        if let Some(node) = self.get(id) {
+            match node {
+                &Expr::Assign(lhs, rhs) => format!("{} = {}", self._render(lhs), self._render(rhs)),
+                &Expr::Define(lhs, rhs) => {
+                    format!("{} := {}", self._render(lhs), self._render(rhs))
+                }
+                &Expr::Add(lhs, rhs) => format!("{} + {}", self._render(lhs), self._render(rhs)),
+                &Expr::Sub(lhs, rhs) => format!("{} - {}", self._render(lhs), self._render(rhs)),
+                &Expr::Mul(lhs, rhs) => format!("{} * {}", self._render(lhs), self._render(rhs)),
+                &Expr::Div(lhs, rhs) => format!("{} / {}", self._render(lhs), self._render(rhs)),
+                &Expr::Exp(lhs, rhs) => format!("{} ^ {}", self._render(lhs), self._render(rhs)),
+                &Expr::Neg(arg) => format!("-{}", self._render(arg)),
+                &Expr::Adv(arg) => format!("{}a", self._render(arg)),
+                &Expr::DisAdv(arg) => format!("{}d", self._render(arg)),
+                &Expr::Sort(arg) => format!("{}s", self._render(arg)),
+                &Expr::Keep(lhs, rhs) => format!("{}k{}", self._render(lhs), self._render(rhs)),
+                &Expr::Roll(q, d) => {
+                    if q == 1 {
+                        format!("d{d}")
+                    } else {
+                        format!("{q}d{d}")
+                    }
+                }
+                &Expr::Natural(n) => n.to_string(),
+                Expr::Identifier(name) => name.clone(),
+                Expr::Call(name, args) => {
+                    format!(
+                        "{name}({})",
+                        args.iter().fold(String::new(), |mut acc, el| {
+                            if !acc.is_empty() {
+                                acc.push_str(", ");
+                            }
+                            acc.push_str(&self._render(*el));
+                            acc
+                        })
+                    )
+                }
+            }
+        } else {
+            "ERROR".to_string()
         }
     }
 }
@@ -383,7 +492,7 @@ pub fn lex(input: &[Token]) -> Result<Ast, String> {
 
 #[cfg(test)]
 mod test {
-    use crate::roll::token::tokenise;
+    use crate::roll::{parse, token::tokenise};
 
     use super::*;
 
@@ -711,5 +820,11 @@ mod test {
                 Expr::Add(0, 3),
             ],
         )
+    }
+
+    #[test]
+    fn test_render() {
+        let src = "func := var = other * 3 - 1";
+        assert_eq!(parse(src).unwrap().0.render(), src)
     }
 }
