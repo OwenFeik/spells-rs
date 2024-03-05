@@ -170,7 +170,6 @@ fn err<T, S: ToString>(msg: S) -> ParseResult<T> {
 #[derive(Clone, Copy, Debug)]
 enum Operator {
     Sentinel,
-    Define,
     Assign,
     Add,
     Sub,
@@ -189,7 +188,6 @@ impl Operator {
         match self {
             Operator::Sentinel => 0,
             Operator::Assign => 1,
-            Operator::Define => 1,
             Operator::Add => 2,
             Operator::Sub => 2,
             Operator::Mul => 3,
@@ -206,7 +204,6 @@ impl Operator {
     fn left_associative(&self) -> bool {
         match self {
             Operator::Sentinel => false,
-            Operator::Define => false,
             Operator::Assign => false,
             Operator::Add => true,
             Operator::Sub => true,
@@ -224,7 +221,6 @@ impl Operator {
     fn is_binary(&self) -> bool {
         match self {
             Operator::Sentinel => false,
-            Operator::Define => true,
             Operator::Assign => true,
             Operator::Add => true,
             Operator::Sub => true,
@@ -292,7 +288,6 @@ impl Operator {
             Token::ParenOpen => err("( is not an operator."),
             Token::ParenClose => err(") is not an operator."),
             Token::Comma => err(", is not an operator."),
-            Token::Define => Ok(Self::Define),
             Token::Assign => Ok(Self::Assign),
             Token::Plus => Ok(Self::Add),
             Token::Minus => Ok(Self::Sub),
@@ -377,7 +372,6 @@ impl<'a> Parser<'a> {
             Token::ParenClose => err(") unexpected."),
             Token::Comma => err(", unexpected."),
             Token::Assign => err("= unexpected."),
-            Token::Define => err(":= unexpected."),
             Token::Plus => err("+ unexpected."),
             Token::Minus => {
                 self.push_operator(Operator::Neg);
@@ -767,6 +761,7 @@ mod test {
                 Node::Natural(2),
                 Node::Add(2, 3),
                 Node::Assign(1, 4),
+                Node::Assign(0, 5),
             ],
         )
     }
@@ -818,7 +813,7 @@ mod test {
 
     #[test]
     fn test_render() {
-        let src = "func := var = other * 3 - 1";
+        let src = "func() = var = other * 3 - 1";
         assert_eq!(parse(src).unwrap().0.render(), src)
     }
 }

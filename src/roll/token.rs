@@ -7,7 +7,6 @@ pub enum Token {
     ParenClose,
     Comma,
     Assign,
-    Define,
     Plus,
     Minus,
     Times,
@@ -26,16 +25,12 @@ impl Token {
             ')' => Some(Self::ParenClose),
             ',' => Some(Self::Comma),
             '=' => Some(Self::Assign),
-            ':' => Some(Self::Define),
             '+' => Some(Self::Plus),
             '-' => Some(Self::Minus),
             '*' => Some(Self::Times),
             '/' => Some(Self::Divide),
             '^' => Some(Self::Exp),
             'k' => Some(Self::Keep),
-            'a' => Some(Self::Advantage),
-            'd' => Some(Self::Disadvantage),
-            's' => Some(Self::Sort),
             '_' => Some(Self::Identifier(String::from("_"))),
             _ if c.is_numeric() => c.to_digit(10).map(Self::Natural),
             _ if c.is_alphabetic() => Some(Self::Identifier(String::from(c))),
@@ -52,7 +47,6 @@ impl Token {
             Token::ParenClose => ')',
             Token::Comma => ',',
             Token::Assign => '=',
-            Token::Define => ':',
             Token::Plus => '+',
             Token::Minus => '-',
             Token::Times => '*',
@@ -68,6 +62,9 @@ impl Token {
     fn consume(self, c: char) -> Result<(Option<Self>, Option<Self>), String> {
         if let Some(n) = c.to_digit(10) {
             match self {
+                Self::Identifier(d) if d == "d" => {
+                    return Ok((None, Some(Self::Roll(1, n))));
+                }
                 Self::Identifier(mut name) => {
                     name.push(c);
                     return Ok((None, Some(Self::Identifier(name))));
@@ -86,20 +83,19 @@ impl Token {
                     name.push(c);
                     return Ok((None, Some(Self::Identifier(name))));
                 }
+                Self::Roll(..) if c == 'a' || c == 'd' || c == 's' => {
+                    return match c {
+                        'a' => Ok((Some(self), Some(Token::Advantage))),
+                        'd' => Ok((Some(self), Some(Token::Disadvantage))),
+                        _ => Ok((Some(self), Some(Token::Sort))),
+                    }
+                }
                 _ if self.char().is_alphabetic() => {
                     let name = [self.char(), c].iter().collect();
                     return Ok((None, Some(Self::Identifier(name))));
                 }
                 _ => {}
             }
-        }
-
-        if matches!(self, Self::Define) {
-            return if c == '=' {
-                Ok((Some(self), None)) // Define (:=) finished.
-            } else {
-                Err(format!("Unexpected character following \":\": {c}"))
-            };
         }
 
         Ok((Some(self), Self::from(c)))
@@ -166,11 +162,14 @@ mod test {
             ]
         );
         assert_eq!(
-            tok_unwrap("a d k s"),
+            tok_unwrap("d4a d8d k 8d8s"),
             vec![
+                Token::Roll(1, 4),
                 Token::Advantage,
+                Token::Roll(1, 8),
                 Token::Disadvantage,
                 Token::Keep,
+                Token::Roll(8, 8),
                 Token::Sort
             ]
         );
@@ -215,11 +214,15 @@ mod test {
     #[test]
     fn test_tokenise_ops_identifiers() {
         assert_eq!(
-            tok_unwrap("dword d aword a"),
+            tok_unwrap("d20d dword d aword a d20a"),
             vec![
-                Token::Identifier("dword".to_string()),
+                Token::Roll(1, 20),
                 Token::Disadvantage,
+                Token::Identifier("dword".to_string()),
+                Token::Identifier("d".to_string()),
                 Token::Identifier("aword".to_string()),
+                Token::Identifier("a".to_string()),
+                Token::Roll(1, 20),
                 Token::Advantage,
             ]
         )
@@ -253,10 +256,12 @@ mod test {
     #[test]
     fn test_tokenise_assign_define() {
         assert_eq!(
-            tok_unwrap("fn := var = 2"),
+            tok_unwrap("fn() = var = 2"),
             vec![
                 Token::Identifier("fn".into()),
-                Token::Define,
+                Token::ParenOpen,
+                Token::ParenClose,
+                Token::Assign,
                 Token::Identifier("var".into()),
                 Token::Assign,
                 Token::Natural(2)
