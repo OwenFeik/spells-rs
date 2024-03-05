@@ -9,7 +9,7 @@ pub struct Input {
 }
 
 impl Input {
-    const PROMPT: &'static str = "\n> ";
+    const PROMPT: &'static str = "> ";
 
     pub fn new() -> Self {
         Self {

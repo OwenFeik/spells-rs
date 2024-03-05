@@ -1,15 +1,12 @@
-use std::{collections::HashMap, convert::TryInto, fmt::format};
+use std::{collections::HashMap, rc::Rc};
+
+use crate::{err, Res};
 
 use super::{
     ast::{Ast, Node},
+    value::Value,
     Outcome, Roll, RollOutcome,
 };
-
-type EvalResult<T> = Result<T, String>;
-
-fn err<T, S: ToString>(msg: S) -> EvalResult<T> {
-    Err(msg.to_string())
-}
 
 struct Function {
     name: String,
@@ -19,7 +16,8 @@ struct Function {
 
 pub struct Context {
     variables: HashMap<String, Value>,
-    functions: HashMap<String, Function>,
+    functions: HashMap<String, Rc<Function>>,
+    scopes: Vec<Context>,
 }
 
 impl Context {
@@ -27,10 +25,18 @@ impl Context {
         Self {
             variables: HashMap::new(),
             functions: HashMap::new(),
+            scopes: Vec::new(),
         }
     }
 
-    fn get(&self, name: &str) -> EvalResult<Value> {
+    fn get(&self, name: &str) -> Res<Value> {
+        for scope in self.scopes.iter().rev() {
+            let ret = scope.get(name);
+            if ret.is_ok() {
+                return ret;
+            }
+        }
+
         if let Some(val) = self.variables.get(name) {
             Ok(val.clone())
         } else {
@@ -42,106 +48,24 @@ impl Context {
         self.variables.insert(name.to_string(), value);
     }
 
-    fn call(&self, name: &str, args: &[usize], ast: &Ast) -> EvalResult<Outcome> {
-        println!("name({args:?})");
-        Ok(Outcome::new(Value::Natural(1)))
+    fn call(&mut self, name: &str, args: Vec<Value>) -> Res<Outcome> {
+        if let Some(function) = self.functions.get(name).cloned() {
+            let mut scope = Context::new();
+            for (name, value) in function.parameters.iter().zip(args) {
+                scope.set(name, value);
+            }
+            self.scopes.push(scope);
+            let ret = evaluate(&function.body, self, function.body.start());
+            self.scopes.pop();
+            ret
+        } else {
+            err(format!("Undefined function: {name}."))
+        }
     }
 
     fn define(&mut self, function: Function) {
-        self.functions.insert(function.name.clone(), function);
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Value {
-    Decimal(f32),
-    Natural(u32),
-    Outcome(RollOutcome),
-    Roll(Roll),
-    Values(Vec<u32>),
-    Empty,
-}
-
-impl Value {
-    fn decimal(self) -> EvalResult<f32> {
-        match self {
-            Self::Decimal(v) => Ok(v),
-            Self::Natural(v) => Ok(v as f32),
-            Self::Roll(..) => Self::Values(self.values()?).decimal(),
-            Self::Outcome(outcome) => Ok(outcome.result as f32),
-            Self::Values(_) => Ok(self.natural()? as f32),
-            Self::Empty => err("Empty cannot be interpreted as decimal."),
-        }
-    }
-
-    fn natural(self) -> EvalResult<u32> {
-        match self {
-            Self::Decimal(v) => Ok(v as u32),
-            Self::Natural(v) => Ok(v),
-            Self::Outcome(outcome) => Ok(outcome.result),
-            Self::Roll(_) => Ok(self.outcome()?.result),
-            Self::Values(values) => Ok(values.iter().sum()),
-            Self::Empty => err("Empty cannot be interpreted as natural."),
-        }
-    }
-
-    fn values(self) -> EvalResult<Vec<u32>> {
-        match self {
-            Self::Decimal(_) => err("Decimal value cannot be interpreted as values."),
-            Self::Natural(n) => Ok(vec![n]),
-            Self::Roll(..) => Ok(self.outcome()?.values),
-            Self::Outcome(outcome) => Ok(outcome.values),
-            Self::Values(values) => Ok(values),
-            Self::Empty => err("Empty cannot be interpreted as values."),
-        }
-    }
-
-    fn roll(self) -> EvalResult<Roll> {
-        match self {
-            Value::Roll(roll) => Ok(roll),
-            _ => err("Expected a roll but found non-roll."),
-        }
-    }
-
-    fn outcome(self) -> EvalResult<RollOutcome> {
-        if let Value::Outcome(outcome) = self {
-            return Ok(outcome);
-        }
-
-        let roll = self.roll()?;
-        let mut quantity: usize = roll
-            .quantity
-            .try_into()
-            .map_err(|_| format!("{} is too many dice.", roll.quantity))?;
-        if roll.advantage ^ roll.disadvantage {
-            quantity = quantity.max(2);
-        }
-
-        let mut values = Vec::with_capacity(quantity);
-        let die = roll.die;
-        for _ in 0..quantity {
-            values.push(rand::Rng::gen_range(&mut rand::thread_rng(), 1..=die))
-        }
-
-        let result = if roll.advantage ^ roll.disadvantage {
-            let mut sorted = values.clone();
-            sorted.sort();
-
-            // Safe because quantity.max(2)
-            if roll.advantage {
-                *values.last().unwrap()
-            } else {
-                *values.first().unwrap()
-            }
-        } else {
-            values.iter().sum()
-        };
-
-        Ok(RollOutcome {
-            roll,
-            values,
-            result,
-        })
+        self.functions
+            .insert(function.name.clone(), Rc::new(function));
     }
 }
 
@@ -153,19 +77,19 @@ impl Outcome {
         }
     }
 
-    fn outcome(mut self) -> EvalResult<(Self, RollOutcome)> {
+    fn outcome(mut self) -> Res<(Self, RollOutcome)> {
         let outcome = if let Value::Outcome(outcome) = &self.value {
             outcome.clone()
         } else {
-            let value = self.value.clone();
-            let outcome = value.outcome()?;
+            let outcome = self.value.outcome()?;
+            self.value = Value::Outcome(outcome.clone());
             self.rolls.push(outcome.clone());
             outcome
         };
         Ok((self, outcome))
     }
 
-    fn values(self) -> EvalResult<(Self, Vec<u32>)> {
+    fn values(self) -> Res<(Self, Vec<u32>)> {
         if matches!(self.value, Value::Roll(_)) {
             let (val, outcome) = self.outcome()?;
             Ok((val, Value::Outcome(outcome).values()?))
@@ -175,7 +99,7 @@ impl Outcome {
         }
     }
 
-    fn natural(self) -> EvalResult<(Self, u32)> {
+    fn natural(self) -> Res<(Self, u32)> {
         if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
             let (this, outcome) = self.outcome()?;
             Ok((this, outcome.result))
@@ -185,7 +109,7 @@ impl Outcome {
         }
     }
 
-    fn decimal(self) -> EvalResult<(Self, f32)> {
+    fn decimal(self) -> Res<(Self, f32)> {
         if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
             let (this, outcome) = self.outcome()?;
             Ok((this, outcome.result as f32))
@@ -195,7 +119,7 @@ impl Outcome {
         }
     }
 
-    fn arithmetic<F: Fn(f32, f32) -> f32>(self, other: Outcome, f: F) -> EvalResult<Outcome> {
+    fn arithmetic<F: Fn(f32, f32) -> f32>(self, other: Outcome, f: F) -> Res<Outcome> {
         let (mut this, lhs) = self.decimal()?;
         let (mut that, rhs) = other.decimal()?;
         this.rolls.append(&mut that.rolls);
@@ -205,27 +129,27 @@ impl Outcome {
         })
     }
 
-    fn add(self, other: Outcome) -> EvalResult<Outcome> {
+    fn add(self, other: Outcome) -> Res<Outcome> {
         self.arithmetic(other, |lhs, rhs| lhs + rhs)
     }
 
-    fn sub(self, other: Outcome) -> EvalResult<Outcome> {
+    fn sub(self, other: Outcome) -> Res<Outcome> {
         self.arithmetic(other, |lhs, rhs| lhs - rhs)
     }
 
-    fn mul(self, other: Outcome) -> EvalResult<Outcome> {
+    fn mul(self, other: Outcome) -> Res<Outcome> {
         self.arithmetic(other, |lhs, rhs| lhs * rhs)
     }
 
-    fn div(self, other: Outcome) -> EvalResult<Outcome> {
+    fn div(self, other: Outcome) -> Res<Outcome> {
         self.arithmetic(other, |lhs, rhs| lhs / rhs)
     }
 
-    fn exp(self, other: Outcome) -> EvalResult<Outcome> {
+    fn exp(self, other: Outcome) -> Res<Outcome> {
         self.arithmetic(other, |lhs, rhs| lhs.powf(rhs))
     }
 
-    fn neg(self) -> EvalResult<Outcome> {
+    fn neg(self) -> Res<Outcome> {
         let (this, value) = self.decimal()?;
         Ok(Self {
             value: Value::Decimal(-value),
@@ -233,7 +157,7 @@ impl Outcome {
         })
     }
 
-    fn adv(self) -> EvalResult<Outcome> {
+    fn adv(self) -> Res<Outcome> {
         let mut roll = self.value.roll()?;
         roll.advantage = true;
         Ok(Self {
@@ -242,7 +166,7 @@ impl Outcome {
         })
     }
 
-    fn disadv(self) -> EvalResult<Self> {
+    fn disadv(self) -> Res<Self> {
         let mut roll = self.value.roll()?;
         roll.disadvantage = true;
         Ok(Self {
@@ -251,7 +175,7 @@ impl Outcome {
         })
     }
 
-    fn sort(self) -> EvalResult<Self> {
+    fn sort(self) -> Res<Self> {
         let (this, mut values) = self.values()?;
         values.sort();
         Ok(Self {
@@ -260,7 +184,7 @@ impl Outcome {
         })
     }
 
-    fn keep(self, rhs: Self) -> EvalResult<Self> {
+    fn keep(self, rhs: Self) -> Res<Self> {
         let (mut this, mut values) = self.values()?;
         let (mut that, keep) = rhs.natural()?;
         this.rolls.append(&mut that.rolls);
@@ -308,7 +232,7 @@ fn define(
     name: &str,
     args: &[usize],
     definition: usize,
-) -> EvalResult<Outcome> {
+) -> Res<Outcome> {
     let mut parameters = Vec::new();
     for &arg in args {
         let Some(Node::Identifier(name)) = ast.get(arg) else {
@@ -329,12 +253,7 @@ fn define(
     Ok(Outcome::new(Value::Empty))
 }
 
-fn assign(
-    ast: &Ast,
-    context: &mut Context,
-    destination: usize,
-    definition: usize,
-) -> EvalResult<Outcome> {
+fn assign(ast: &Ast, context: &mut Context, destination: usize, definition: usize) -> Res<Outcome> {
     match ast.get(destination) {
         Some(Node::Identifier(name)) => {
             let value = evaluate(ast, context, definition)?.value;
@@ -346,7 +265,15 @@ fn assign(
     }
 }
 
-fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> EvalResult<Outcome> {
+fn call(ast: &Ast, context: &mut Context, name: &str, args: &[usize]) -> Res<Outcome> {
+    let mut arg_values = Vec::new();
+    for arg in args {
+        arg_values.push(evaluate(ast, context, *arg)?.value);
+    }
+    context.call(name, arg_values)
+}
+
+fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
     if let Some(expr) = ast.get(index) {
         match expr {
             &Node::Assign(destination, definition) => assign(ast, context, destination, definition),
@@ -364,16 +291,21 @@ fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> EvalResult<Outcom
             }
             &Node::Roll(q, d) => Ok(Outcome::roll(q, d)),
             &Node::Natural(v) => Ok(Outcome::nat(v)),
-            Node::Call(name, args) => context.call(&name, &args, ast),
-            Node::Identifier(name) => context.get(&name).map(Outcome::new),
+            Node::Call(name, args) => call(ast, context, name, args),
+            Node::Identifier(name) => context.get(name).map(Outcome::new),
         }
     } else {
         err("Attempted to evaluate expression which did not exist.")
     }
 }
 
-pub fn eval(ast: &Ast, context: &mut Context) -> EvalResult<Outcome> {
-    evaluate(ast, context, ast.start())
+pub fn eval(ast: &Ast, context: &mut Context) -> Res<Outcome> {
+    let outcome = evaluate(ast, context, ast.start())?;
+    if matches!(outcome.value, Value::Roll(_)) {
+        outcome.natural().map(|oc| oc.0)
+    } else {
+        Ok(outcome)
+    }
 }
 
 #[cfg(test)]
@@ -430,7 +362,7 @@ mod test {
 
     #[test]
     fn test_rolls() {
-        let result = eval(&parse("4d6k3 + 2d4 + d20d + 2d10a")).unwrap();
+        let result = eval(&parse("4d6k3 + 2d4 + d20d + 2d10a"), &mut Context::new()).unwrap();
         let rolls: Vec<Roll> = result.rolls.into_iter().map(|oc| oc.roll).collect();
         assert_eq!(
             rolls,
@@ -485,14 +417,18 @@ mod test {
     #[test]
     fn test_sort_outcomes() {
         let ast = parse("8d8s");
-        assert_eq!(eval(&ast).unwrap().rolls.len(), 1);
+        assert_eq!(eval(&ast, &mut Context::new()).unwrap().rolls.len(), 1);
     }
 
     #[test]
     fn test_eval() {
         let ast = parse("2 + 3 - 4 * 5");
         assert_eq!(
-            eval(&ast).unwrap().value.decimal().unwrap(),
+            eval(&ast, &mut Context::new())
+                .unwrap()
+                .value
+                .decimal()
+                .unwrap(),
             2.0 + 3.0 - 4.0 * 5.0
         );
     }

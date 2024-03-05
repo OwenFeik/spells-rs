@@ -1,9 +1,13 @@
-#![feature(iterator_try_collect)]
 #![feature(let_chains)]
-#![allow(unused)]
 
 mod input;
 mod roll;
+
+type Res<T> = Result<T, String>;
+
+fn err<T, S: ToString>(msg: S) -> Res<T> {
+    Err(msg.to_string())
+}
 
 fn main() {
     let mut input = input::Input::new();
@@ -11,8 +15,8 @@ fn main() {
     let mut interrupted = false;
     loop {
         match input.line() {
-            Ok(text) => match roll::parse(&text) {
-                Ok(statement) => println!("{:?}", statement.eval()),
+            Ok(text) => match roll::parse(&text).and_then(|s| s.eval(&mut context)) {
+                Ok(outcome) => println!("{outcome}"),
                 Err(e) => println!("{e}"),
             },
             Err(input::InputError::Interrupt) => {

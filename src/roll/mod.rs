@@ -3,9 +3,10 @@ use std::fmt::{Display, Write};
 mod ast;
 mod eval;
 mod token;
+mod value;
 
 pub use self::eval::Context;
-use self::eval::Value;
+use self::value::Value;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Roll {
@@ -79,26 +80,23 @@ pub struct Outcome {
 
 impl Display for Outcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // for roll in &self.rolls {
-        //     roll.fmt(f)?;
-        //     f.write_char('\n')?;
-        // }
+        for roll in &self.rolls {
+            roll.fmt(f)?;
+            f.write_char('\n')?;
+        }
 
-        // // If value is an integer, skip decimal places. Else round to 2 places.
-        // let string_value = if self.value as i32 as f32 == self.value {
-        //     (self.value as i32).to_string()
-        // } else {
-        //     format!("{:.2}", self.value)
-        // };
-        // write!(f, "Grand Total: {string_value}")
-        write!(f, "{self:?}")
+        if matches!(self.value, Value::Empty) {
+            std::fmt::Result::Ok(())
+        } else {
+            write!(f, "{}", self.value)
+        }
     }
 }
 pub struct Statement(ast::Ast);
 
 impl Statement {
-    pub fn eval(&self) -> Result<Outcome, String> {
-        eval::eval(&self.0)
+    pub fn eval(&self, context: &mut Context) -> Result<Outcome, String> {
+        eval::eval(&self.0, context)
     }
 }
 
