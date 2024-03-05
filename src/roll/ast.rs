@@ -10,9 +10,8 @@ use super::token::Token;
 // factor := roll | number | identfifier
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Expr {
+pub enum Node {
     Assign(usize, usize),
-    Define(usize, usize),
     Call(String, Vec<usize>),
     Add(usize, usize),
     Sub(usize, usize),
@@ -29,75 +28,73 @@ pub enum Expr {
     Identifier(String),
 }
 
-impl Expr {
+impl Node {
     fn renumber_binary(&self, lhs: usize, rhs: usize) -> Self {
         match self {
-            Expr::Assign(_, _) => Expr::Assign(lhs, rhs),
-            Expr::Define(_, _) => Expr::Define(lhs, rhs),
-            Expr::Add(_, _) => Expr::Add(lhs, rhs),
-            Expr::Sub(_, _) => Expr::Sub(lhs, rhs),
-            Expr::Mul(_, _) => Expr::Mul(lhs, rhs),
-            Expr::Div(_, _) => Expr::Div(lhs, rhs),
-            Expr::Exp(_, _) => Expr::Exp(lhs, rhs),
-            Expr::Keep(_, _) => Expr::Keep(lhs, rhs),
+            Node::Assign(_, _) => Node::Assign(lhs, rhs),
+            Node::Add(_, _) => Node::Add(lhs, rhs),
+            Node::Sub(_, _) => Node::Sub(lhs, rhs),
+            Node::Mul(_, _) => Node::Mul(lhs, rhs),
+            Node::Div(_, _) => Node::Div(lhs, rhs),
+            Node::Exp(_, _) => Node::Exp(lhs, rhs),
+            Node::Keep(_, _) => Node::Keep(lhs, rhs),
             _ => self.clone(),
         }
     }
 
     fn renumber_unary(&self, arg: usize) -> Self {
         match self {
-            Expr::Neg(_) => Expr::Neg(arg),
-            Expr::Adv(_) => Expr::Adv(arg),
-            Expr::DisAdv(_) => Expr::DisAdv(arg),
-            Expr::Sort(_) => Expr::Sort(arg),
+            Node::Neg(_) => Node::Neg(arg),
+            Node::Adv(_) => Node::Adv(arg),
+            Node::DisAdv(_) => Node::DisAdv(arg),
+            Node::Sort(_) => Node::Sort(arg),
             _ => self.clone(),
         }
     }
 
     fn copy(&self, from: &Ast, to: &mut Ast) -> Option<usize> {
         match self {
-            &Expr::Assign(lhs, rhs)
-            | &Expr::Define(lhs, rhs)
-            | &Expr::Add(lhs, rhs)
-            | &Expr::Sub(lhs, rhs)
-            | &Expr::Mul(lhs, rhs)
-            | &Expr::Div(lhs, rhs)
-            | &Expr::Exp(lhs, rhs)
-            | &Expr::Keep(lhs, rhs) => {
+            &Node::Assign(lhs, rhs)
+            | &Node::Add(lhs, rhs)
+            | &Node::Sub(lhs, rhs)
+            | &Node::Mul(lhs, rhs)
+            | &Node::Div(lhs, rhs)
+            | &Node::Exp(lhs, rhs)
+            | &Node::Keep(lhs, rhs) => {
                 let lhs = from.get(lhs)?.copy(from, to)?;
                 let rhs = from.get(rhs)?.copy(from, to)?;
                 Some(to.add(self.renumber_binary(lhs, rhs)))
             }
-            &Expr::Neg(arg) | &Expr::Adv(arg) | &Expr::DisAdv(arg) | &Expr::Sort(arg) => {
+            &Node::Neg(arg) | &Node::Adv(arg) | &Node::DisAdv(arg) | &Node::Sort(arg) => {
                 let arg = from.get(arg)?.copy(from, to)?;
                 Some(to.add(self.renumber_unary(arg)))
             }
-            Expr::Call(name, args) => {
+            Node::Call(name, args) => {
                 let mut new_args = Vec::new();
                 for &arg in args {
                     new_args.push(from.get(arg)?.copy(from, to)?);
                 }
-                Some(to.add(Expr::Call(name.clone(), new_args)))
+                Some(to.add(Node::Call(name.clone(), new_args)))
             }
-            Expr::Roll(_, _) | Expr::Natural(_) | Expr::Identifier(_) => Some(to.add(self.clone())),
+            Node::Roll(_, _) | Node::Natural(_) | Node::Identifier(_) => Some(to.add(self.clone())),
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Ast(Vec<Expr>);
+pub struct Ast(Vec<Node>);
 
 impl Ast {
     fn new() -> Self {
         Self(Vec::new())
     }
 
-    fn add(&mut self, expr: Expr) -> usize {
+    fn add(&mut self, expr: Node) -> usize {
         self.0.push(expr);
         self.0.len() - 1
     }
 
-    pub fn get(&self, expr: usize) -> Option<&Expr> {
+    pub fn get(&self, expr: usize) -> Option<&Node> {
         self.0.get(expr)
     }
 
@@ -122,30 +119,29 @@ impl Ast {
     fn _render(&self, id: usize) -> String {
         if let Some(node) = self.get(id) {
             match node {
-                &Expr::Assign(lhs, rhs) => format!("{} = {}", self._render(lhs), self._render(rhs)),
-                &Expr::Define(lhs, rhs) => {
-                    format!("{} := {}", self._render(lhs), self._render(rhs))
+                &Node::Assign(lhs, rhs) => {
+                    format!("{} = {}", self._render(lhs), self._render(rhs))
                 }
-                &Expr::Add(lhs, rhs) => format!("{} + {}", self._render(lhs), self._render(rhs)),
-                &Expr::Sub(lhs, rhs) => format!("{} - {}", self._render(lhs), self._render(rhs)),
-                &Expr::Mul(lhs, rhs) => format!("{} * {}", self._render(lhs), self._render(rhs)),
-                &Expr::Div(lhs, rhs) => format!("{} / {}", self._render(lhs), self._render(rhs)),
-                &Expr::Exp(lhs, rhs) => format!("{} ^ {}", self._render(lhs), self._render(rhs)),
-                &Expr::Neg(arg) => format!("-{}", self._render(arg)),
-                &Expr::Adv(arg) => format!("{}a", self._render(arg)),
-                &Expr::DisAdv(arg) => format!("{}d", self._render(arg)),
-                &Expr::Sort(arg) => format!("{}s", self._render(arg)),
-                &Expr::Keep(lhs, rhs) => format!("{}k{}", self._render(lhs), self._render(rhs)),
-                &Expr::Roll(q, d) => {
+                &Node::Add(lhs, rhs) => format!("{} + {}", self._render(lhs), self._render(rhs)),
+                &Node::Sub(lhs, rhs) => format!("{} - {}", self._render(lhs), self._render(rhs)),
+                &Node::Mul(lhs, rhs) => format!("{} * {}", self._render(lhs), self._render(rhs)),
+                &Node::Div(lhs, rhs) => format!("{} / {}", self._render(lhs), self._render(rhs)),
+                &Node::Exp(lhs, rhs) => format!("{} ^ {}", self._render(lhs), self._render(rhs)),
+                &Node::Neg(arg) => format!("-{}", self._render(arg)),
+                &Node::Adv(arg) => format!("{}a", self._render(arg)),
+                &Node::DisAdv(arg) => format!("{}d", self._render(arg)),
+                &Node::Sort(arg) => format!("{}s", self._render(arg)),
+                &Node::Keep(lhs, rhs) => format!("{}k{}", self._render(lhs), self._render(rhs)),
+                &Node::Roll(q, d) => {
                     if q == 1 {
                         format!("d{d}")
                     } else {
                         format!("{q}d{d}")
                     }
                 }
-                &Expr::Natural(n) => n.to_string(),
-                Expr::Identifier(name) => name.clone(),
-                Expr::Call(name, args) => {
+                &Node::Natural(n) => n.to_string(),
+                Node::Identifier(name) => name.clone(),
+                Node::Call(name, args) => {
                     format!(
                         "{name}({})",
                         args.iter().fold(String::new(), |mut acc, el| {
@@ -243,16 +239,15 @@ impl Operator {
         }
     }
 
-    fn binary(self, lhs: usize, rhs: usize) -> ParseResult<Expr> {
+    fn binary(self, lhs: usize, rhs: usize) -> ParseResult<Node> {
         match self {
-            Operator::Assign => Ok(Expr::Assign(lhs, rhs)),
-            Operator::Define => Ok(Expr::Define(lhs, rhs)),
-            Operator::Add => Ok(Expr::Add(lhs, rhs)),
-            Operator::Sub => Ok(Expr::Sub(lhs, rhs)),
-            Operator::Mul => Ok(Expr::Mul(lhs, rhs)),
-            Operator::Div => Ok(Expr::Div(lhs, rhs)),
-            Operator::Exp => Ok(Expr::Exp(lhs, rhs)),
-            Operator::Keep => Ok(Expr::Keep(lhs, rhs)),
+            Operator::Assign => Ok(Node::Assign(lhs, rhs)),
+            Operator::Add => Ok(Node::Add(lhs, rhs)),
+            Operator::Sub => Ok(Node::Sub(lhs, rhs)),
+            Operator::Mul => Ok(Node::Mul(lhs, rhs)),
+            Operator::Div => Ok(Node::Div(lhs, rhs)),
+            Operator::Exp => Ok(Node::Exp(lhs, rhs)),
+            Operator::Keep => Ok(Node::Keep(lhs, rhs)),
             _ => err(format!("{self:?} is not a binary operator.")),
         }
     }
@@ -268,12 +263,12 @@ impl Operator {
         matches!(self, Operator::Adv | Operator::DisAdv | Operator::Sort)
     }
 
-    fn unary(self, operand: usize) -> ParseResult<Expr> {
+    fn unary(self, operand: usize) -> ParseResult<Node> {
         match self {
-            Operator::Neg => Ok(Expr::Neg(operand)),
-            Operator::Adv => Ok(Expr::Adv(operand)),
-            Operator::DisAdv => Ok(Expr::DisAdv(operand)),
-            Operator::Sort => Ok(Expr::Sort(operand)),
+            Operator::Neg => Ok(Node::Neg(operand)),
+            Operator::Adv => Ok(Node::Adv(operand)),
+            Operator::DisAdv => Ok(Node::DisAdv(operand)),
+            Operator::Sort => Ok(Node::Sort(operand)),
             _ => err(format!("{self:?} is not a unary operator.")),
         }
     }
@@ -365,13 +360,13 @@ impl<'a> Parser<'a> {
                 if let Some(Token::ParenOpen) = self.peek() {
                     self.call(name)
                 } else {
-                    let id = self.ast.add(Expr::Identifier(name));
+                    let id = self.ast.add(Node::Identifier(name));
                     self.operands.push(id);
                     Ok(id)
                 }
             }
-            Token::Natural(n) => Ok(self.push_operand(Expr::Natural(n))),
-            Token::Roll(q, d) => Ok(self.push_operand(Expr::Roll(q, d))),
+            Token::Natural(n) => Ok(self.push_operand(Node::Natural(n))),
+            Token::Roll(q, d) => Ok(self.push_operand(Node::Roll(q, d))),
             Token::ParenOpen => {
                 self.operators.push(Operator::Sentinel);
                 let id = self.expr()?;
@@ -418,7 +413,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect(Token::ParenClose)?;
-        Ok(self.push_operand(Expr::Call(name, args)))
+        Ok(self.push_operand(Node::Call(name, args)))
     }
 
     fn next(&mut self) -> ParseResult<&Token> {
@@ -468,7 +463,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn push_operand(&mut self, operand: Expr) -> usize {
+    fn push_operand(&mut self, operand: Node) -> usize {
         let id = self.ast.add(operand);
         self.operands.push(id);
         id
@@ -496,15 +491,15 @@ mod test {
 
     use super::*;
 
-    fn exprs(ast: &Ast) -> &[Expr] {
+    fn exprs(ast: &Ast) -> &[Node] {
         &ast.0
     }
 
-    fn check_exprs(input: &str, expected: Vec<Expr>) {
+    fn check_exprs(input: &str, expected: Vec<Node>) {
         assert_eq!(exprs(&lex(&tokenise(input).unwrap()).unwrap()), expected)
     }
 
-    fn root(ast: &Ast) -> Option<&Expr> {
+    fn root(ast: &Ast) -> Option<&Node> {
         ast.get(ast.start())
     }
 
@@ -513,16 +508,16 @@ mod test {
         let ast = lex(&[Token::Natural(2), Token::Plus, Token::Natural(3)]).unwrap();
         assert_eq!(
             exprs(&ast),
-            vec![Expr::Natural(2), Expr::Natural(3), Expr::Add(0, 1)]
+            vec![Node::Natural(2), Node::Natural(3), Node::Add(0, 1)]
         );
-        assert_eq!(root(&ast), Some(&Expr::Add(0, 1)));
+        assert_eq!(root(&ast), Some(&Node::Add(0, 1)));
     }
 
     #[test]
     fn test_negation() {
         let ast = lex(&[Token::Minus, Token::Natural(3)]).unwrap();
-        assert_eq!(exprs(&ast), vec![Expr::Natural(3), Expr::Neg(0)]);
-        assert_eq!(root(&ast), Some(&Expr::Neg(0)));
+        assert_eq!(exprs(&ast), vec![Node::Natural(3), Node::Neg(0)]);
+        assert_eq!(root(&ast), Some(&Node::Neg(0)));
 
         let ast = lex(&[
             Token::Natural(2),
@@ -534,13 +529,13 @@ mod test {
         assert_eq!(
             exprs(&ast),
             vec![
-                Expr::Natural(2),
-                Expr::Natural(3),
-                Expr::Neg(1),
-                Expr::Add(0, 2)
+                Node::Natural(2),
+                Node::Natural(3),
+                Node::Neg(1),
+                Node::Add(0, 2)
             ]
         );
-        assert_eq!(root(&ast), Some(&Expr::Add(0, 2)));
+        assert_eq!(root(&ast), Some(&Node::Add(0, 2)));
     }
 
     #[test]
@@ -563,19 +558,19 @@ mod test {
         assert_eq!(
             exprs(&ast),
             vec![
-                Expr::Natural(2),
-                Expr::Neg(0),
-                Expr::Natural(3),
-                Expr::Natural(4),
-                Expr::Exp(2, 3),
-                Expr::Natural(5),
-                Expr::Mul(4, 5),
-                Expr::Add(1, 6),
-                Expr::Natural(6),
-                Expr::Sub(7, 8)
+                Node::Natural(2),
+                Node::Neg(0),
+                Node::Natural(3),
+                Node::Natural(4),
+                Node::Exp(2, 3),
+                Node::Natural(5),
+                Node::Mul(4, 5),
+                Node::Add(1, 6),
+                Node::Natural(6),
+                Node::Sub(7, 8)
             ]
         );
-        assert_eq!(root(&ast), Some(&Expr::Sub(7, 8)));
+        assert_eq!(root(&ast), Some(&Node::Sub(7, 8)));
     }
 
     #[test]
@@ -588,7 +583,7 @@ mod test {
         ])
         .unwrap();
 
-        assert_eq!(root(&ast), Some(&Expr::Neg(2)));
+        assert_eq!(root(&ast), Some(&Node::Neg(2)));
     }
 
     #[test]
@@ -604,11 +599,11 @@ mod test {
         assert_eq!(
             exprs(&ast),
             vec![
-                Expr::Natural(2),
-                Expr::Natural(3),
-                Expr::Add(0, 1),
-                Expr::Natural(4),
-                Expr::Add(2, 3)
+                Node::Natural(2),
+                Node::Natural(3),
+                Node::Add(0, 1),
+                Node::Natural(4),
+                Node::Add(2, 3)
             ]
         );
     }
@@ -626,11 +621,11 @@ mod test {
         assert_eq!(
             exprs(&ast),
             vec![
-                Expr::Natural(3),
-                Expr::Natural(4),
-                Expr::Sub(0, 1),
-                Expr::Natural(5),
-                Expr::Add(2, 3)
+                Node::Natural(3),
+                Node::Natural(4),
+                Node::Sub(0, 1),
+                Node::Natural(5),
+                Node::Add(2, 3)
             ]
         );
     }
@@ -652,7 +647,7 @@ mod test {
         let ast = lex(&[Token::Roll(10, 8), Token::Keep, Token::Natural(8)]).unwrap();
         assert_eq!(
             exprs(&ast),
-            vec![Expr::Roll(10, 8), Expr::Natural(8), Expr::Keep(0, 1)]
+            vec![Node::Roll(10, 8), Node::Natural(8), Node::Keep(0, 1)]
         );
     }
 
@@ -676,16 +671,16 @@ mod test {
         assert_eq!(
             exprs(&ast),
             vec![
-                Expr::Roll(1, 20),
-                Expr::Adv(0),
-                Expr::Roll(1, 4),
-                Expr::DisAdv(2),
-                Expr::Add(1, 3),
-                Expr::Roll(10, 8),
-                Expr::Natural(8),
-                Expr::Keep(5, 6),
-                Expr::Sort(7),
-                Expr::Add(4, 8)
+                Node::Roll(1, 20),
+                Node::Adv(0),
+                Node::Roll(1, 4),
+                Node::DisAdv(2),
+                Node::Add(1, 3),
+                Node::Roll(10, 8),
+                Node::Natural(8),
+                Node::Keep(5, 6),
+                Node::Sort(7),
+                Node::Add(4, 8)
             ]
         );
     }
@@ -695,13 +690,13 @@ mod test {
         check_exprs(
             "4 + 3 - 2 * 5",
             vec![
-                Expr::Natural(4),
-                Expr::Natural(3),
-                Expr::Add(0, 1),
-                Expr::Natural(2),
-                Expr::Natural(5),
-                Expr::Mul(3, 4),
-                Expr::Sub(2, 5),
+                Node::Natural(4),
+                Node::Natural(3),
+                Node::Add(0, 1),
+                Node::Natural(2),
+                Node::Natural(5),
+                Node::Mul(3, 4),
+                Node::Sub(2, 5),
             ],
         );
     }
@@ -711,12 +706,12 @@ mod test {
         check_exprs(
             "-5^3*3",
             vec![
-                Expr::Natural(5),
-                Expr::Natural(3),
-                Expr::Exp(0, 1),
-                Expr::Neg(2),
-                Expr::Natural(3),
-                Expr::Mul(3, 4),
+                Node::Natural(5),
+                Node::Natural(3),
+                Node::Exp(0, 1),
+                Node::Neg(2),
+                Node::Natural(3),
+                Node::Mul(3, 4),
             ],
         );
     }
@@ -726,9 +721,9 @@ mod test {
         check_exprs(
             "var + 3",
             vec![
-                Expr::Identifier("var".into()),
-                Expr::Natural(3),
-                Expr::Add(0, 1),
+                Node::Identifier("var".into()),
+                Node::Natural(3),
+                Node::Add(0, 1),
             ],
         )
     }
@@ -738,11 +733,11 @@ mod test {
         check_exprs(
             "var1 * var2 ^ var3",
             vec![
-                Expr::Identifier("var1".into()),
-                Expr::Identifier("var2".into()),
-                Expr::Identifier("var3".into()),
-                Expr::Exp(1, 2),
-                Expr::Mul(0, 3),
+                Node::Identifier("var1".into()),
+                Node::Identifier("var2".into()),
+                Node::Identifier("var3".into()),
+                Node::Exp(1, 2),
+                Node::Mul(0, 3),
             ],
         )
     }
@@ -752,11 +747,11 @@ mod test {
         check_exprs(
             "var = 2 + 3",
             vec![
-                Expr::Identifier("var".into()),
-                Expr::Natural(2),
-                Expr::Natural(3),
-                Expr::Add(1, 2),
-                Expr::Assign(0, 3),
+                Node::Identifier("var".into()),
+                Node::Natural(2),
+                Node::Natural(3),
+                Node::Add(1, 2),
+                Node::Assign(0, 3),
             ],
         )
     }
@@ -764,15 +759,14 @@ mod test {
     #[test]
     fn test_define_assign() {
         check_exprs(
-            "fn := var = 1 + 2",
+            "fn() = var = 1 + 2",
             vec![
-                Expr::Identifier("fn".into()),
-                Expr::Identifier("var".into()),
-                Expr::Natural(1),
-                Expr::Natural(2),
-                Expr::Add(2, 3),
-                Expr::Assign(1, 4),
-                Expr::Define(0, 5),
+                Node::Call("fn".into(), Vec::new()),
+                Node::Identifier("var".into()),
+                Node::Natural(1),
+                Node::Natural(2),
+                Node::Add(2, 3),
+                Node::Assign(1, 4),
             ],
         )
     }
@@ -782,17 +776,17 @@ mod test {
         check_exprs(
             "fn(1, 2, 3)",
             vec![
-                Expr::Natural(1),
-                Expr::Natural(2),
-                Expr::Natural(3),
-                Expr::Call("fn".into(), vec![0, 1, 2]),
+                Node::Natural(1),
+                Node::Natural(2),
+                Node::Natural(3),
+                Node::Call("fn".into(), vec![0, 1, 2]),
             ],
         )
     }
 
     #[test]
     fn test_call_empty() {
-        check_exprs("fn()", vec![Expr::Call("fn".into(), Vec::new())])
+        check_exprs("fn()", vec![Node::Call("fn".into(), Vec::new())])
     }
 
     #[test]
@@ -800,10 +794,10 @@ mod test {
         check_exprs(
             "outer(inner1(), inner2(3))",
             vec![
-                Expr::Call("inner1".into(), Vec::new()),
-                Expr::Natural(3),
-                Expr::Call("inner2".into(), vec![1]),
-                Expr::Call("outer".into(), vec![0, 2]),
+                Node::Call("inner1".into(), Vec::new()),
+                Node::Natural(3),
+                Node::Call("inner2".into(), vec![1]),
+                Node::Call("outer".into(), vec![0, 2]),
             ],
         )
     }
@@ -813,11 +807,11 @@ mod test {
         check_exprs(
             "5 + fn() * 2",
             vec![
-                Expr::Natural(5),
-                Expr::Call("fn".into(), Vec::new()),
-                Expr::Natural(2),
-                Expr::Mul(1, 2),
-                Expr::Add(0, 3),
+                Node::Natural(5),
+                Node::Call("fn".into(), Vec::new()),
+                Node::Natural(2),
+                Node::Mul(1, 2),
+                Node::Add(0, 3),
             ],
         )
     }

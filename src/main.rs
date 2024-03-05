@@ -5,29 +5,16 @@
 mod input;
 mod roll;
 
-pub struct Context {
-    input: input::Input,
-}
-
-impl Context {
-    fn new() -> Self {
-        Self {
-            input: input::Input::new(),
-        }
-    }
-}
-
-fn handle(cx: &mut Context, text: &str) {}
-
 fn main() {
-    let mut context = Context::new();
+    let mut input = input::Input::new();
+    let mut context = roll::Context::new();
     let mut interrupted = false;
     loop {
-        match context.input.line() {
-            Ok(text) => {
-                println!();
-                handle(&mut context, &text);
-            }
+        match input.line() {
+            Ok(text) => match roll::parse(&text) {
+                Ok(statement) => println!("{:?}", statement.eval()),
+                Err(e) => println!("{e}"),
+            },
             Err(input::InputError::Interrupt) => {
                 if interrupted {
                     std::process::exit(0);

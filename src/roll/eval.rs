@@ -1,7 +1,7 @@
-use std::{collections::HashMap, convert::TryInto};
+use std::{collections::HashMap, convert::TryInto, fmt::format};
 
 use super::{
-    expr::{Ast, Expr},
+    ast::{Ast, Node},
     Outcome, Roll, RollOutcome,
 };
 
@@ -11,13 +11,19 @@ fn err<T, S: ToString>(msg: S) -> EvalResult<T> {
     Err(msg.to_string())
 }
 
+struct Function {
+    name: String,
+    body: Ast,
+    parameters: Vec<String>,
+}
+
 pub struct Context {
     variables: HashMap<String, Value>,
-    functions: HashMap<String, Ast>,
+    functions: HashMap<String, Function>,
 }
 
 impl Context {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             variables: HashMap::new(),
             functions: HashMap::new(),
@@ -36,13 +42,13 @@ impl Context {
         self.variables.insert(name.to_string(), value);
     }
 
-    fn call(&self, name: &str, args: &[usize], ast: &Ast) -> EvalResult<ExprEval> {
+    fn call(&self, name: &str, args: &[usize], ast: &Ast) -> EvalResult<Outcome> {
         println!("name({args:?})");
-        Ok(ExprEval::new(Value::Natural(1)))
+        Ok(Outcome::new(Value::Natural(1)))
     }
 
-    fn define<S: ToString>(&mut self, name: S, ast: Ast) {
-        self.functions.insert(name.to_string(), ast);
+    fn define(&mut self, function: Function) {
+        self.functions.insert(function.name.clone(), function);
     }
 }
 
@@ -139,13 +145,7 @@ impl Value {
     }
 }
 
-#[derive(Debug)]
-struct ExprEval {
-    value: Value,
-    rolls: Vec<RollOutcome>,
-}
-
-impl ExprEval {
+impl Outcome {
     fn new(value: Value) -> Self {
         Self {
             value,
@@ -195,37 +195,37 @@ impl ExprEval {
         }
     }
 
-    fn arithmetic<F: Fn(f32, f32) -> f32>(self, other: ExprEval, f: F) -> EvalResult<ExprEval> {
+    fn arithmetic<F: Fn(f32, f32) -> f32>(self, other: Outcome, f: F) -> EvalResult<Outcome> {
         let (mut this, lhs) = self.decimal()?;
         let (mut that, rhs) = other.decimal()?;
         this.rolls.append(&mut that.rolls);
-        Ok(ExprEval {
+        Ok(Outcome {
             value: Value::Decimal(f(lhs, rhs)),
             rolls: this.rolls,
         })
     }
 
-    fn add(self, other: ExprEval) -> EvalResult<ExprEval> {
+    fn add(self, other: Outcome) -> EvalResult<Outcome> {
         self.arithmetic(other, |lhs, rhs| lhs + rhs)
     }
 
-    fn sub(self, other: ExprEval) -> EvalResult<ExprEval> {
+    fn sub(self, other: Outcome) -> EvalResult<Outcome> {
         self.arithmetic(other, |lhs, rhs| lhs - rhs)
     }
 
-    fn mul(self, other: ExprEval) -> EvalResult<ExprEval> {
+    fn mul(self, other: Outcome) -> EvalResult<Outcome> {
         self.arithmetic(other, |lhs, rhs| lhs * rhs)
     }
 
-    fn div(self, other: ExprEval) -> EvalResult<ExprEval> {
+    fn div(self, other: Outcome) -> EvalResult<Outcome> {
         self.arithmetic(other, |lhs, rhs| lhs / rhs)
     }
 
-    fn exp(self, other: ExprEval) -> EvalResult<ExprEval> {
+    fn exp(self, other: Outcome) -> EvalResult<Outcome> {
         self.arithmetic(other, |lhs, rhs| lhs.powf(rhs))
     }
 
-    fn neg(self) -> EvalResult<ExprEval> {
+    fn neg(self) -> EvalResult<Outcome> {
         let (this, value) = self.decimal()?;
         Ok(Self {
             value: Value::Decimal(-value),
@@ -233,7 +233,7 @@ impl ExprEval {
         })
     }
 
-    fn adv(self) -> EvalResult<ExprEval> {
+    fn adv(self) -> EvalResult<Outcome> {
         let mut roll = self.value.roll()?;
         roll.advantage = true;
         Ok(Self {
@@ -302,77 +302,83 @@ impl ExprEval {
     }
 }
 
-fn assign(
-    ast: &Ast,
-    context: &mut Context,
-    identifier: usize,
-    value: usize,
-) -> EvalResult<ExprEval> {
-    let Some(Expr::Identifier(name)) = ast.get(identifier) else {
-        return err(format!("Invalid identifier: {:?}.", ast.get(identifier)));
-    };
-
-    let value = evaluate(ast, context, value)?.value;
-    context.set(name, value);
-    context.get(name).map(ExprEval::new)
-}
-
 fn define(
     ast: &Ast,
     context: &mut Context,
-    identifier: usize,
+    name: &str,
+    args: &[usize],
     definition: usize,
-) -> EvalResult<ExprEval> {
-    let Some(Expr::Identifier(name)) = ast.get(identifier) else {
-        return err(format!("Invalid identifier: {:?}.", ast.get(identifier)));
-    };
+) -> EvalResult<Outcome> {
+    let mut parameters = Vec::new();
+    for &arg in args {
+        let Some(Node::Identifier(name)) = ast.get(arg) else {
+            return err(format!("Invalid argument signature: {:?}.", ast.get(arg)));
+        };
+        parameters.push(name.clone());
+    }
 
-    let Some(ast) = ast.subtree(definition) else {
+    let Some(body) = ast.subtree(definition) else {
         return err("Failed to get subtree for definition.");
     };
 
-    context.define(name, ast);
-    Ok(ExprEval::new(Value::Empty))
+    context.define(Function {
+        name: name.to_string(),
+        body,
+        parameters,
+    });
+    Ok(Outcome::new(Value::Empty))
 }
 
-fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> EvalResult<ExprEval> {
+fn assign(
+    ast: &Ast,
+    context: &mut Context,
+    destination: usize,
+    definition: usize,
+) -> EvalResult<Outcome> {
+    match ast.get(destination) {
+        Some(Node::Identifier(name)) => {
+            let value = evaluate(ast, context, definition)?.value;
+            context.set(name, value);
+            context.get(name).map(Outcome::new)
+        }
+        Some(Node::Call(name, args)) => define(ast, context, name, args, definition),
+        invalid => err(format!("{invalid:?} is not a valid assignment target.")),
+    }
+}
+
+fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> EvalResult<Outcome> {
     if let Some(expr) = ast.get(index) {
         match expr {
-            &Expr::Assign(identifier, value) => assign(ast, context, identifier, value),
-            &Expr::Define(identifier, definition) => define(ast, context, identifier, definition),
-            &Expr::Add(lhs, rhs) => evaluate(ast, context, lhs)?.add(evaluate(ast, context, rhs)?),
-            &Expr::Sub(lhs, rhs) => evaluate(ast, context, lhs)?.sub(evaluate(ast, context, rhs)?),
-            &Expr::Mul(lhs, rhs) => evaluate(ast, context, lhs)?.mul(evaluate(ast, context, rhs)?),
-            &Expr::Div(lhs, rhs) => evaluate(ast, context, lhs)?.div(evaluate(ast, context, rhs)?),
-            &Expr::Exp(lhs, rhs) => evaluate(ast, context, lhs)?.exp(evaluate(ast, context, rhs)?),
-            &Expr::Neg(arg) => evaluate(ast, context, arg)?.neg(),
-            &Expr::Adv(arg) => evaluate(ast, context, arg)?.adv(),
-            &Expr::DisAdv(arg) => evaluate(ast, context, arg)?.disadv(),
-            &Expr::Sort(arg) => evaluate(ast, context, arg)?.sort(),
-            &Expr::Keep(lhs, rhs) => {
+            &Node::Assign(destination, definition) => assign(ast, context, destination, definition),
+            &Node::Add(lhs, rhs) => evaluate(ast, context, lhs)?.add(evaluate(ast, context, rhs)?),
+            &Node::Sub(lhs, rhs) => evaluate(ast, context, lhs)?.sub(evaluate(ast, context, rhs)?),
+            &Node::Mul(lhs, rhs) => evaluate(ast, context, lhs)?.mul(evaluate(ast, context, rhs)?),
+            &Node::Div(lhs, rhs) => evaluate(ast, context, lhs)?.div(evaluate(ast, context, rhs)?),
+            &Node::Exp(lhs, rhs) => evaluate(ast, context, lhs)?.exp(evaluate(ast, context, rhs)?),
+            &Node::Neg(arg) => evaluate(ast, context, arg)?.neg(),
+            &Node::Adv(arg) => evaluate(ast, context, arg)?.adv(),
+            &Node::DisAdv(arg) => evaluate(ast, context, arg)?.disadv(),
+            &Node::Sort(arg) => evaluate(ast, context, arg)?.sort(),
+            &Node::Keep(lhs, rhs) => {
                 evaluate(ast, context, lhs)?.keep(evaluate(ast, context, rhs)?)
             }
-            &Expr::Roll(q, d) => Ok(ExprEval::roll(q, d)),
-            &Expr::Natural(v) => Ok(ExprEval::nat(v)),
-            Expr::Call(name, args) => context.call(&name, &args, ast),
-            Expr::Identifier(name) => context.get(&name).map(ExprEval::new),
+            &Node::Roll(q, d) => Ok(Outcome::roll(q, d)),
+            &Node::Natural(v) => Ok(Outcome::nat(v)),
+            Node::Call(name, args) => context.call(&name, &args, ast),
+            Node::Identifier(name) => context.get(&name).map(Outcome::new),
         }
     } else {
         err("Attempted to evaluate expression which did not exist.")
     }
 }
 
-pub fn eval(ast: &Ast) -> EvalResult<Outcome> {
-    let (expval, value) = evaluate(ast, &mut Context::new(), ast.start())?.decimal()?;
-    Ok(Outcome {
-        value,
-        rolls: expval.rolls,
-    })
+pub fn eval(ast: &Ast, context: &mut Context) -> EvalResult<Outcome> {
+    evaluate(ast, context, ast.start())
 }
 
 #[cfg(test)]
 mod test {
-    use crate::roll::{expr::lex, token::tokenise};
+    use crate::roll::{ast::lex, token::tokenise};
 
     use super::*;
 
@@ -449,7 +455,7 @@ mod test {
 
     #[test]
     fn test_keep() {
-        let expr = ExprEval {
+        let expr = Outcome {
             value: Value::Outcome(RollOutcome {
                 roll: Roll {
                     quantity: 8,
@@ -462,13 +468,13 @@ mod test {
             }),
             rolls: Vec::new(),
         };
-        let values = expr.keep(ExprEval::nat(6)).unwrap().value.values().unwrap();
+        let values = expr.keep(Outcome::nat(6)).unwrap().value.values().unwrap();
         assert_eq!(values, vec![3, 4, 5, 6, 7, 8]);
     }
 
     #[test]
     fn test_sort() {
-        let expr = ExprEval {
+        let expr = Outcome {
             value: Value::Values(vec![3, 4, 1, 7]),
             rolls: Vec::new(),
         };
@@ -485,7 +491,10 @@ mod test {
     #[test]
     fn test_eval() {
         let ast = parse("2 + 3 - 4 * 5");
-        assert_eq!(eval(&ast).unwrap().value, 2.0 + 3.0 - 4.0 * 5.0);
+        assert_eq!(
+            eval(&ast).unwrap().value.decimal().unwrap(),
+            2.0 + 3.0 - 4.0 * 5.0
+        );
     }
 
     #[test]
@@ -494,5 +503,16 @@ mod test {
         let ast = parse("var = 2 + 3 - 1");
         evaluate(&ast, &mut context, ast.start()).unwrap();
         assert_eq!(context.get("var").unwrap().natural().unwrap(), 2 + 3 - 1);
+    }
+
+    #[test]
+    fn test_definition() {
+        let mut context = Context::new();
+        let ast = parse("func(x, y) := x + y");
+        evaluate(&ast, &mut context, ast.start()).unwrap();
+        assert_eq!(
+            context.functions.get("func").unwrap().body.render(),
+            "x + y"
+        );
     }
 }

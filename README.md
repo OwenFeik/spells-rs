@@ -2,9 +2,6 @@
 
 ## Syntax
 
-* Application is the default operation.
-    * `func(3.5)` is equivalent to `func 3.5`. Should be parsed as an identifier
-        followed by a bracketed expression which is the first argument.
 * Declare functions with `:=`, declare constants with `=`.
     * A function is stored as a parsed expression, and evaluated when
         referenced.
@@ -12,14 +9,15 @@
         the variable specified.
 
 ```
-> sub a b := a - b
-sub(a, b) = a - b
 > sub(a, b) := a - b
 sub(a, b) = a - b
-> sixteen = sub (4 * 5) 4
+> sixteen = sub(4 * 5, 4)
 sixteen = 16
 > sixteen + 3
 19
+> 2d4 + sixteen
+2d4    Rolls: 1, 3    Total: 4
+2d4 + sixteen    Total: 20
 ```
 
 ## Primitives
