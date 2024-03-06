@@ -14,45 +14,74 @@ struct Function {
     parameters: Vec<String>,
 }
 
-pub struct Context {
+struct Scope {
     variables: HashMap<String, Value>,
     functions: HashMap<String, Rc<Function>>,
-    scopes: Vec<Context>,
+}
+
+impl Scope {
+    fn new() -> Self {
+        Self {
+            variables: HashMap::new(),
+            functions: HashMap::new(),
+        }
+    }
+}
+
+pub struct Context {
+    scopes: Vec<Scope>,
 }
 
 impl Context {
     pub fn new() -> Self {
         Self {
-            variables: HashMap::new(),
-            functions: HashMap::new(),
-            scopes: Vec::new(),
+            scopes: vec![Scope::new()],
         }
     }
 
-    fn get(&self, name: &str) -> Res<Value> {
-        for scope in self.scopes.iter().rev() {
-            let ret = scope.get(name);
-            if ret.is_ok() {
-                return ret;
-            }
-        }
-
-        if let Some(val) = self.variables.get(name) {
-            Ok(val.clone())
-        } else {
-            err(format!("Undefined variable: {name}."))
-        }
+    fn globals(&mut self) -> &mut Scope {
+        self.scopes.get_mut(0).expect("Global scope popped.")
     }
 
-    fn set<S: ToString>(&mut self, name: S, value: Value) {
-        self.variables.insert(name.to_string(), value);
+    fn get_variable(&self, name: &str) -> Option<Value> {
+        self.scopes
+            .iter()
+            .rev()
+            .map(|scope| scope.variables.get(name).cloned())
+            .find(Option::is_some)
+            .flatten()
+    }
+
+    fn set_variable<S: ToString>(&mut self, name: S, value: Value) {
+        self.globals().variables.insert(name.to_string(), value);
+    }
+
+    fn get_function(&self, name: &str) -> Option<Rc<Function>> {
+        self.scopes
+            .iter()
+            .rev()
+            .map(|scope| scope.functions.get(name).cloned())
+            .find(Option::is_some)
+            .flatten()
+    }
+
+    fn define_function(&mut self, function: Function) {
+        self.globals()
+            .functions
+            .insert(function.name.clone(), Rc::new(function));
     }
 
     fn call(&mut self, name: &str, args: Vec<Value>) -> Res<Outcome> {
-        if let Some(function) = self.functions.get(name).cloned() {
-            let mut scope = Context::new();
+        if let Some(function) = self.get_function(name) {
+            let mut scope = Scope::new();
+            if function.parameters.len() != args.len() {
+                return err(format!(
+                    "Incorrect number of arguments. {name} expects {} arguments.",
+                    function.parameters.len()
+                ));
+            }
             for (name, value) in function.parameters.iter().zip(args) {
-                scope.set(name, value);
+                scope.variables.insert(name.clone(), value);
             }
             self.scopes.push(scope);
             let ret = evaluate(&function.body, self, function.body.start());
@@ -61,11 +90,6 @@ impl Context {
         } else {
             err(format!("Undefined function: {name}."))
         }
-    }
-
-    fn define(&mut self, function: Function) {
-        self.functions
-            .insert(function.name.clone(), Rc::new(function));
     }
 }
 
@@ -245,7 +269,7 @@ fn define(
         return err("Failed to get subtree for definition.");
     };
 
-    context.define(Function {
+    context.define_function(Function {
         name: name.to_string(),
         body,
         parameters,
@@ -257,8 +281,8 @@ fn assign(ast: &Ast, context: &mut Context, destination: usize, definition: usiz
     match ast.get(destination) {
         Some(Node::Identifier(name)) => {
             let value = evaluate(ast, context, definition)?.value;
-            context.set(name, value);
-            context.get(name).map(Outcome::new)
+            context.set_variable(name, value.clone());
+            Ok(Outcome::new(value))
         }
         Some(Node::Call(name, args)) => define(ast, context, name, args, definition),
         invalid => err(format!("{invalid:?} is not a valid assignment target.")),
@@ -271,6 +295,21 @@ fn call(ast: &Ast, context: &mut Context, name: &str, args: &[usize]) -> Res<Out
         arg_values.push(evaluate(ast, context, *arg)?.value);
     }
     context.call(name, arg_values)
+}
+
+/// Attempts to return the value of the given name in the current context. If
+/// not found attempts to call a function with the given name with no
+/// parameters.
+fn variable(ast: &Ast, context: &mut Context, name: &str) -> Res<Outcome> {
+    if let Some(value) = context.get_variable(name) {
+        return Ok(Outcome::new(value));
+    } else {
+        let call_res = call(ast, context, name, &[]);
+        if call_res.is_ok() {
+            return call_res;
+        }
+    }
+    err(format!("Undefined variable: {name}."))
 }
 
 fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
@@ -292,7 +331,7 @@ fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
             &Node::Roll(q, d) => Ok(Outcome::roll(q, d)),
             &Node::Natural(v) => Ok(Outcome::nat(v)),
             Node::Call(name, args) => call(ast, context, name, args),
-            Node::Identifier(name) => context.get(name).map(Outcome::new),
+            Node::Identifier(name) => variable(ast, context, name),
         }
     } else {
         err("Attempted to evaluate expression which did not exist.")
@@ -438,7 +477,10 @@ mod test {
         let mut context = Context::new();
         let ast = parse("var = 2 + 3 - 1");
         evaluate(&ast, &mut context, ast.start()).unwrap();
-        assert_eq!(context.get("var").unwrap().natural().unwrap(), 2 + 3 - 1);
+        assert_eq!(
+            context.get_variable("var").unwrap().natural().unwrap(),
+            2 + 3 - 1
+        );
     }
 
     #[test]
@@ -446,9 +488,6 @@ mod test {
         let mut context = Context::new();
         let ast = parse("func(x, y) := x + y");
         evaluate(&ast, &mut context, ast.start()).unwrap();
-        assert_eq!(
-            context.functions.get("func").unwrap().body.render(),
-            "x + y"
-        );
+        assert_eq!(context.get_function("func").unwrap().body.render(), "x + y");
     }
 }
