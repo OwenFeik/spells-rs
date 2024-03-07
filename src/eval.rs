@@ -73,12 +73,7 @@ impl Context {
     fn call(&mut self, name: &str, args: Vec<Value>) -> Res<Outcome> {
         if let Some(function) = self.get_function(name) {
             let mut scope = Scope::new();
-            if function.parameters.len() != args.len() {
-                return err(format!(
-                    "Incorrect number of arguments. {name} expects {} arguments.",
-                    function.parameters.len()
-                ));
-            }
+            check_argument_count(name, function.parameters.len(), &args)?;
             for (name, value) in function.parameters.iter().zip(args) {
                 scope.variables.insert(name.clone(), value);
             }
@@ -89,6 +84,16 @@ impl Context {
         } else {
             globals::call(name, &args)
         }
+    }
+}
+
+pub fn check_argument_count(name: &str, count: usize, args: &[Value]) -> Res<()> {
+    if count != args.len() {
+        err(format!(
+            "Incorrect number of arguments: {name} expects {count}."
+        ))
+    } else {
+        Ok(())
     }
 }
 

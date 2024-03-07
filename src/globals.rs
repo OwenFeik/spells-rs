@@ -1,4 +1,4 @@
-use crate::{err, outcome::Outcome, value::Value, Res};
+use crate::{err, eval, outcome::Outcome, value::Value, Res};
 
 struct GlobalFunction {
     name: &'static str,
@@ -12,11 +12,10 @@ struct GlobalFunctionCall<'a> {
 
 impl<'a> GlobalFunctionCall<'a> {
     fn single_decimal(&self) -> Res<f32> {
-        if let Some(value) = self.args.first() {
-            value.clone().decimal()
-        } else {
-            err(format!("{} expects a single argument.", self.gf.name))
-        }
+        eval::check_argument_count(self.gf.name, 1, self.args)?;
+
+        // Index safe because we checked length is 1.
+        self.args[0].clone().decimal()
     }
 }
 
