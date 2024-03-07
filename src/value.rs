@@ -9,7 +9,7 @@ use crate::{
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Decimal(f32),
-    Natural(u32),
+    Natural(i32),
     Outcome(RollOutcome),
     Roll(Roll),
     Values(Vec<u32>),
@@ -28,13 +28,13 @@ impl Value {
         }
     }
 
-    pub fn natural(self) -> Res<u32> {
+    pub fn natural(self) -> Res<i32> {
         match self {
-            Self::Decimal(v) => Ok(v as u32),
+            Self::Decimal(v) => Ok(v as i32),
             Self::Natural(v) => Ok(v),
-            Self::Outcome(outcome) => Ok(outcome.result),
-            Self::Roll(_) => Ok(self.outcome()?.result),
-            Self::Values(values) => Ok(values.iter().sum()),
+            Self::Outcome(outcome) => Ok(outcome.result as i32),
+            Self::Roll(_) => Ok(self.outcome()?.result as i32),
+            Self::Values(values) => Ok(values.iter().sum::<u32>() as i32),
             Self::Empty => err("Empty cannot be interpreted as natural."),
         }
     }
@@ -42,7 +42,7 @@ impl Value {
     pub fn values(self) -> Res<Vec<u32>> {
         match self {
             Self::Decimal(_) => err("Decimal value cannot be interpreted as values."),
-            Self::Natural(n) => Ok(vec![n]),
+            Self::Natural(n) => err("Natural value cannot be interpreted as values."),
             Self::Roll(..) => Ok(self.outcome()?.values),
             Self::Outcome(outcome) => Ok(outcome.values),
             Self::Values(values) => Ok(values),

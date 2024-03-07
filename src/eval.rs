@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{err, outcome::Outcome, Res};
+use crate::{err, globals, outcome::Outcome, Res};
 
 use super::{
     ast::{Ast, Node},
@@ -87,7 +87,7 @@ impl Context {
             self.scopes.pop();
             ret
         } else {
-            err(format!("Undefined function: {name}."))
+            globals::call(name, &args)
         }
     }
 }
@@ -171,7 +171,7 @@ fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
                 evaluate(ast, context, lhs)?.keep(evaluate(ast, context, rhs)?)
             }
             &Node::Roll(q, d) => Ok(Outcome::roll(q, d)),
-            &Node::Natural(v) => Ok(Outcome::nat(v)),
+            &Node::Natural(v) => Ok(Outcome::nat(v as i32)),
             Node::Call(name, args) => call(ast, context, name, args),
             Node::Identifier(name) => variable(ast, context, name),
         }

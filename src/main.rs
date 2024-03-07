@@ -2,6 +2,7 @@
 
 mod ast;
 mod eval;
+mod globals;
 mod input;
 mod outcome;
 mod parser;

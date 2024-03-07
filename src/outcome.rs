@@ -42,10 +42,10 @@ impl Outcome {
         }
     }
 
-    pub fn natural(self) -> Res<(Self, u32)> {
+    pub fn natural(self) -> Res<(Self, i32)> {
         if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
             let (this, outcome) = self.outcome()?;
-            Ok((this, outcome.result))
+            Ok((this, outcome.result as i32))
         } else {
             let value = self.value.clone().natural()?;
             Ok((self, value))
@@ -164,7 +164,7 @@ impl Outcome {
         Self::new(Value::Roll(Roll::new(quantity, die)))
     }
 
-    pub fn nat(value: u32) -> Self {
+    pub fn nat(value: i32) -> Self {
         Self::new(Value::Natural(value))
     }
 }
