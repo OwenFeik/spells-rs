@@ -1,8 +1,8 @@
 #![feature(let_chains)]
 
 mod ast;
+mod builtins;
 mod eval;
-mod globals;
 mod input;
 mod outcome;
 mod parser;
@@ -16,10 +16,12 @@ fn err<T, S: ToString>(msg: S) -> Res<T> {
     Err(msg.to_string())
 }
 
-fn evaluate(input: &str, context: &mut eval::Context) -> Res<outcome::Outcome> {
-    let tokens = token::tokenise(input)?;
-    let ast = parser::parse(&tokens)?;
-    eval::eval(&ast, context)
+fn parse(input: &str) -> Res<ast::Ast> {
+    parser::parse(&token::tokenise(input)?)
+}
+
+fn eval(input: &str, context: &mut eval::Context) -> Res<outcome::Outcome> {
+    eval::eval_roll(&parse(input)?, context)
 }
 
 fn main() {
@@ -28,7 +30,7 @@ fn main() {
     let mut interrupted = false;
     loop {
         match input.line() {
-            Ok(text) => match evaluate(&text, &mut context) {
+            Ok(text) => match eval(&text, &mut context) {
                 Ok(outcome) => println!("{outcome}"),
                 Err(e) => println!("{e}"),
             },

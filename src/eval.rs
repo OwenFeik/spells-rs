@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{err, globals, outcome::Outcome, Res};
+use crate::{builtins, err, outcome::Outcome, parse, Res};
 
 use super::{
     ast::{Ast, Node},
@@ -27,15 +27,25 @@ impl Scope {
     }
 }
 
+const DEFAULT_GLOBALS: &[&str] = &["avg(roll) = quantity(roll) * (dice(roll) + 1) / 2"];
+
 pub struct Context {
     scopes: Vec<Scope>,
 }
 
 impl Context {
     pub fn new() -> Self {
-        Self {
+        let mut context = Self {
             scopes: vec![Scope::new()],
+        };
+
+        // Add default globals by evaluating them.
+        for definition in DEFAULT_GLOBALS {
+            let ast = parse(definition).unwrap();
+            evaluate(&ast, &mut context, ast.start()).unwrap();
         }
+
+        context
     }
 
     fn globals(&mut self) -> &mut Scope {
@@ -82,7 +92,7 @@ impl Context {
             self.scopes.pop();
             ret
         } else {
-            globals::call(name, &args)
+            builtins::call(name, &args)
         }
     }
 }
@@ -185,7 +195,7 @@ fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
     }
 }
 
-pub fn eval(ast: &Ast, context: &mut Context) -> Res<Outcome> {
+pub fn eval_roll(ast: &Ast, context: &mut Context) -> Res<Outcome> {
     let outcome = evaluate(ast, context, ast.start())?;
     if matches!(outcome.value, Value::Roll(_)) {
         outcome.natural().map(|oc| oc.0)
@@ -252,7 +262,7 @@ mod test {
 
     #[test]
     fn test_rolls() {
-        let result = eval(&ast_of("4d6k3 + 2d4 + d20d + 2d10a"), &mut Context::new()).unwrap();
+        let result = eval_roll(&ast_of("4d6k3 + 2d4 + d20d + 2d10a"), &mut Context::new()).unwrap();
         let rolls: Vec<Roll> = result.rolls.into_iter().map(|oc| oc.roll).collect();
         assert_eq!(
             rolls,
@@ -307,14 +317,14 @@ mod test {
     #[test]
     fn test_sort_outcomes() {
         let ast = ast_of("8d8s");
-        assert_eq!(eval(&ast, &mut Context::new()).unwrap().rolls.len(), 1);
+        assert_eq!(eval_roll(&ast, &mut Context::new()).unwrap().rolls.len(), 1);
     }
 
     #[test]
     fn test_eval() {
         let ast = ast_of("2 + 3 - 4 * 5");
         assert_eq!(
-            eval(&ast, &mut Context::new())
+            eval_roll(&ast, &mut Context::new())
                 .unwrap()
                 .value
                 .decimal()

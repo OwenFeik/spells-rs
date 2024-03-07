@@ -68,6 +68,11 @@ impl Node {
             Node::Roll(_, _) | Node::Natural(_) | Node::Identifier(_) => Some(to.add(self.clone())),
         }
     }
+
+    #[cfg(test)]
+    pub fn name<S: ToString>(name: S) -> Self {
+        Self::Identifier(name.to_string())
+    }
 }
 
 #[derive(Debug)]

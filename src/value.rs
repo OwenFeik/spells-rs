@@ -42,7 +42,7 @@ impl Value {
     pub fn values(self) -> Res<Vec<u32>> {
         match self {
             Self::Decimal(_) => err("Decimal value cannot be interpreted as values."),
-            Self::Natural(n) => err("Natural value cannot be interpreted as values."),
+            Self::Natural(_) => err("Natural value cannot be interpreted as values."),
             Self::Roll(..) => Ok(self.outcome()?.values),
             Self::Outcome(outcome) => Ok(outcome.values),
             Self::Values(values) => Ok(values),
@@ -102,15 +102,7 @@ impl Value {
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            &Value::Decimal(v) => {
-                // If value is an integer, skip decimal places. Else round to 2 places.
-                let string_value = if v as i32 as f32 == v {
-                    (v as i32).to_string()
-                } else {
-                    format!("{:.2}", v)
-                };
-                write!(f, "{string_value}")
-            }
+            &Value::Decimal(v) => write!(f, "{}", (v * 100.0).round() / 100.0), // 2 places.
             Value::Natural(v) => write!(f, "{v}"),
             Value::Outcome(v) => write!(f, "{}", v.result),
             Value::Roll(v) => write!(f, "{v}"),

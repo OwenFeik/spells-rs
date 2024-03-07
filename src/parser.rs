@@ -234,7 +234,7 @@ impl<'a> Parser<'a> {
         Ok(id)
     }
 
-    fn call(&mut self, name: String) -> Res<usize> {
+    fn _call(&mut self, name: String) -> Res<usize> {
         self.expect(Token::ParenOpen)?;
         let mut args = Vec::new();
         if !matches!(self.peek(), Some(Token::ParenClose)) {
@@ -245,7 +245,19 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect(Token::ParenClose)?;
-        Ok(self.push_operand(Node::Call(name, args)))
+        Ok(self.ast.add(Node::Call(name, args)))
+    }
+
+    fn call(&mut self, name: String) -> Res<usize> {
+        let operators = std::mem::take(&mut self.operators);
+        let operands = std::mem::take(&mut self.operands);
+        let ret = self._call(name);
+        self.operators = operators;
+        self.operands = operands;
+        if let Ok(id) = ret {
+            self.operands.push(id);
+        }
+        ret
     }
 
     fn next(&mut self) -> Res<&Token> {
@@ -645,6 +657,46 @@ mod test {
                 Node::Natural(2),
                 Node::Mul(1, 2),
                 Node::Add(0, 3),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_parse_definition() {
+        check_exprs(
+            "avg(roll) = (dice(roll) + 1) / 2",
+            vec![
+                Node::Identifier("roll".into()),
+                Node::Call("avg".into(), vec![0]),
+                Node::Identifier("roll".into()),
+                Node::Call("dice".into(), vec![2]),
+                Node::Natural(1),
+                Node::Add(3, 4),
+                Node::Natural(2),
+                Node::Div(5, 6),
+                Node::Assign(1, 7),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_parse_definition_multiple_calls() {
+        check_exprs(
+            "func(ina, inb) = (f1(ina, 1) + f2(inb, 2)) * 2",
+            vec![
+                Node::name("ina"),
+                Node::name("inb"),
+                Node::Call("func".into(), vec![0, 1]),
+                Node::name("ina"),
+                Node::Natural(1),
+                Node::Call("f1".into(), vec![3, 4]),
+                Node::name("inb"),
+                Node::Natural(2),
+                Node::Call("f2".into(), vec![6, 7]),
+                Node::Add(5, 8),
+                Node::Natural(2),
+                Node::Mul(9, 10),
+                Node::Assign(2, 11),
             ],
         )
     }

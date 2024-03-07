@@ -51,13 +51,14 @@ sixteen = 16
     * `(d20, [18])`
     * `(4d8, [2, 4, 6, 8])`
 
-## Methods
-Methods available in the global scope to use in expressions.
+## Built Ins
+Functions available in the global scope to use in expressions.
 * Arithmetic: `+ - * / ^`, infix arithmetic operators. PEMDAS binding.
-* `floor(decimal): integer`, mathematical floor. `floor 3.8 == 3`.
-* `ceil(decimal): integer`, mathematical ceil. `ceil 1.2 == 2`.
-* `dice(roll): integer`, size of roll dice. `dice 8d8 == 8`.
-* `avg(roll): decimal`, average outcome of a roll. `avg 3d8 == 13.5`.
+* `floor(decimal): integer`, mathematical floor. `floor(3.8) == 3`.
+* `ceil(decimal): integer`, mathematical ceil. `ceil(1.2) == 2`.
+* `quantity(roll): integer`, number of roll dice. `quantity(10d4) == 4`.
+* `dice(roll): integer`, size of roll dice. `dice(6d8) == 8`.
+* `avg(roll): decimal`, average outcome of a roll. `avg(3d8) == 13.5`.
 
 ## Global Variables
 * `?`, the output of the previous command.
