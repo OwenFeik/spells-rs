@@ -1,23 +1,15 @@
-use std::fmt::{Display, Write};
-
-mod ast;
-mod eval;
-mod token;
-mod value;
-
-pub use self::eval::Context;
-use self::value::Value;
+use std::fmt::Display;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Roll {
-    quantity: u32,
-    die: u32,
-    advantage: bool,
-    disadvantage: bool,
+    pub quantity: u32,
+    pub die: u32,
+    pub advantage: bool,
+    pub disadvantage: bool,
 }
 
 impl Roll {
-    fn new(quantity: u32, die: u32) -> Self {
+    pub fn new(quantity: u32, die: u32) -> Self {
         Roll {
             quantity,
             die,
@@ -51,9 +43,9 @@ impl Display for Roll {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RollOutcome {
-    roll: Roll,
-    values: Vec<u32>,
-    result: u32,
+    pub roll: Roll,
+    pub values: Vec<u32>,
+    pub result: u32,
 }
 
 impl Display for RollOutcome {
@@ -70,36 +62,4 @@ impl Display for RollOutcome {
             self.result
         )
     }
-}
-
-#[derive(Debug)]
-pub struct Outcome {
-    value: Value,
-    rolls: Vec<RollOutcome>,
-}
-
-impl Display for Outcome {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for roll in &self.rolls {
-            roll.fmt(f)?;
-            f.write_char('\n')?;
-        }
-
-        if matches!(self.value, Value::Empty) {
-            std::fmt::Result::Ok(())
-        } else {
-            write!(f, "{}", self.value)
-        }
-    }
-}
-pub struct Statement(ast::Ast);
-
-impl Statement {
-    pub fn eval(&self, context: &mut Context) -> Result<Outcome, String> {
-        eval::eval(&self.0, context)
-    }
-}
-
-pub fn parse(input: &str) -> Result<Statement, String> {
-    Ok(Statement(ast::lex(&token::tokenise(input)?)?))
 }

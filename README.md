@@ -2,6 +2,23 @@
 
 ## Syntax
 
+### Grammar
+
+```
+expr := term { binary term }
+term := factor | call | ( expr ) | unary-prefix term | term unary-postfix 
+binary := + | - | * | / | ^ | k | = | :=
+call := identifier ( expr { , expr } )
+unary-postfix := a | d | s | k
+unary-prefix := -
+factor := roll | number | identfifier
+roll := /[0-9]*d[0-9]+/ 
+number := /[0-9]+(.[0-9]+)?/
+identifier := /[a-zA-Z][a-zA-Z0-9]*/
+```
+
+### Notes
+
 * Declare functions with `:=`, declare constants with `=`.
     * A function is stored as a parsed expression, and evaluated when
         referenced.

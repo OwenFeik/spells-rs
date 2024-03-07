@@ -1,8 +1,10 @@
 use std::{convert::TryInto, fmt::Display};
 
-use crate::{err, Res};
-
-use super::{Roll, RollOutcome};
+use crate::{
+    err,
+    roll::{Roll, RollOutcome},
+    Res,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {

@@ -1,11 +1,10 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{err, Res};
+use crate::{err, outcome::Outcome, Res};
 
 use super::{
     ast::{Ast, Node},
     value::Value,
-    Outcome, Roll, RollOutcome,
 };
 
 struct Function {
@@ -90,163 +89,6 @@ impl Context {
         } else {
             err(format!("Undefined function: {name}."))
         }
-    }
-}
-
-impl Outcome {
-    fn new(value: Value) -> Self {
-        Self {
-            value,
-            rolls: Vec::new(),
-        }
-    }
-
-    fn outcome(mut self) -> Res<(Self, RollOutcome)> {
-        let outcome = if let Value::Outcome(outcome) = &self.value {
-            outcome.clone()
-        } else {
-            let outcome = self.value.outcome()?;
-            self.value = Value::Outcome(outcome.clone());
-            self.rolls.push(outcome.clone());
-            outcome
-        };
-        Ok((self, outcome))
-    }
-
-    fn values(self) -> Res<(Self, Vec<u32>)> {
-        if matches!(self.value, Value::Roll(_)) {
-            let (val, outcome) = self.outcome()?;
-            Ok((val, Value::Outcome(outcome).values()?))
-        } else {
-            let values = self.value.clone().values()?;
-            Ok((self, values))
-        }
-    }
-
-    fn natural(self) -> Res<(Self, u32)> {
-        if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
-            let (this, outcome) = self.outcome()?;
-            Ok((this, outcome.result))
-        } else {
-            let value = self.value.clone().natural()?;
-            Ok((self, value))
-        }
-    }
-
-    fn decimal(self) -> Res<(Self, f32)> {
-        if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
-            let (this, outcome) = self.outcome()?;
-            Ok((this, outcome.result as f32))
-        } else {
-            let value = self.value.clone().decimal()?;
-            Ok((self, value))
-        }
-    }
-
-    fn arithmetic<F: Fn(f32, f32) -> f32>(self, other: Outcome, f: F) -> Res<Outcome> {
-        let (mut this, lhs) = self.decimal()?;
-        let (mut that, rhs) = other.decimal()?;
-        this.rolls.append(&mut that.rolls);
-        Ok(Outcome {
-            value: Value::Decimal(f(lhs, rhs)),
-            rolls: this.rolls,
-        })
-    }
-
-    fn add(self, other: Outcome) -> Res<Outcome> {
-        self.arithmetic(other, |lhs, rhs| lhs + rhs)
-    }
-
-    fn sub(self, other: Outcome) -> Res<Outcome> {
-        self.arithmetic(other, |lhs, rhs| lhs - rhs)
-    }
-
-    fn mul(self, other: Outcome) -> Res<Outcome> {
-        self.arithmetic(other, |lhs, rhs| lhs * rhs)
-    }
-
-    fn div(self, other: Outcome) -> Res<Outcome> {
-        self.arithmetic(other, |lhs, rhs| lhs / rhs)
-    }
-
-    fn exp(self, other: Outcome) -> Res<Outcome> {
-        self.arithmetic(other, |lhs, rhs| lhs.powf(rhs))
-    }
-
-    fn neg(self) -> Res<Outcome> {
-        let (this, value) = self.decimal()?;
-        Ok(Self {
-            value: Value::Decimal(-value),
-            rolls: this.rolls,
-        })
-    }
-
-    fn adv(self) -> Res<Outcome> {
-        let mut roll = self.value.roll()?;
-        roll.advantage = true;
-        Ok(Self {
-            value: Value::Roll(roll),
-            rolls: self.rolls,
-        })
-    }
-
-    fn disadv(self) -> Res<Self> {
-        let mut roll = self.value.roll()?;
-        roll.disadvantage = true;
-        Ok(Self {
-            value: Value::Roll(roll),
-            rolls: self.rolls,
-        })
-    }
-
-    fn sort(self) -> Res<Self> {
-        let (this, mut values) = self.values()?;
-        values.sort();
-        Ok(Self {
-            value: Value::Values(values),
-            rolls: this.rolls,
-        })
-    }
-
-    fn keep(self, rhs: Self) -> Res<Self> {
-        let (mut this, mut values) = self.values()?;
-        let (mut that, keep) = rhs.natural()?;
-        this.rolls.append(&mut that.rolls);
-
-        let keep = keep as usize;
-        if keep < values.len() {
-            let mut to_remove = values.len() - keep;
-            let mut smallest = None;
-            while to_remove > 0 {
-                for (i, v) in values.iter().enumerate() {
-                    if smallest.is_none() {
-                        smallest = Some((i, *v));
-                    } else if let Some((_, sv)) = smallest
-                        && sv > *v
-                    {
-                        smallest = Some((i, *v));
-                    }
-                }
-
-                if let Some((i, _)) = smallest {
-                    values.remove(i);
-                }
-                to_remove -= 1;
-            }
-        }
-
-        Ok(Self {
-            value: Value::Values(values),
-            rolls: this.rolls,
-        })
-    }
-
-    fn roll(quantity: u32, die: u32) -> Self {
-        Self::new(Value::Roll(Roll::new(quantity, die)))
-    }
-
-    fn nat(value: u32) -> Self {
-        Self::new(Value::Natural(value))
     }
 }
 
@@ -349,12 +191,16 @@ pub fn eval(ast: &Ast, context: &mut Context) -> Res<Outcome> {
 
 #[cfg(test)]
 mod test {
-    use crate::roll::{ast::lex, token::tokenise};
+    use crate::{
+        parser::parse,
+        roll::{Roll, RollOutcome},
+        token::tokenise,
+    };
 
     use super::*;
 
-    fn parse(input: &str) -> Ast {
-        lex(&tokenise(input).unwrap()).unwrap()
+    fn ast_of(input: &str) -> Ast {
+        parse(&tokenise(input).unwrap()).unwrap()
     }
 
     fn eval_value(ast: Ast) -> Value {
@@ -365,13 +211,13 @@ mod test {
 
     #[test]
     fn test_natural() {
-        assert_eq!(eval_value(parse("16")), Value::Natural(16));
+        assert_eq!(eval_value(ast_of("16")), Value::Natural(16));
     }
 
     #[test]
     fn test_roll() {
         assert_eq!(
-            eval_value(parse("4d12")),
+            eval_value(ast_of("4d12")),
             Value::Roll(Roll {
                 quantity: 4,
                 die: 12,
@@ -384,7 +230,7 @@ mod test {
     #[test]
     fn test_add() {
         assert_eq!(
-            eval_value(parse("5 + 4 + 3 + 2 + 1")).natural().unwrap(),
+            eval_value(ast_of("5 + 4 + 3 + 2 + 1")).natural().unwrap(),
             5 + 4 + 3 + 2 + 1
         );
     }
@@ -392,7 +238,7 @@ mod test {
     #[test]
     fn test_arithmetic() {
         assert_eq!(
-            eval_value(parse("5 * 4 ^ 2 / 3 + 2 - 1"))
+            eval_value(ast_of("5 * 4 ^ 2 / 3 + 2 - 1"))
                 .decimal()
                 .unwrap(),
             5.0 * 4.0_f32.powf(2.0) / 3.0 + 2.0 - 1.0
@@ -401,7 +247,7 @@ mod test {
 
     #[test]
     fn test_rolls() {
-        let result = eval(&parse("4d6k3 + 2d4 + d20d + 2d10a"), &mut Context::new()).unwrap();
+        let result = eval(&ast_of("4d6k3 + 2d4 + d20d + 2d10a"), &mut Context::new()).unwrap();
         let rolls: Vec<Roll> = result.rolls.into_iter().map(|oc| oc.roll).collect();
         assert_eq!(
             rolls,
@@ -455,13 +301,13 @@ mod test {
 
     #[test]
     fn test_sort_outcomes() {
-        let ast = parse("8d8s");
+        let ast = ast_of("8d8s");
         assert_eq!(eval(&ast, &mut Context::new()).unwrap().rolls.len(), 1);
     }
 
     #[test]
     fn test_eval() {
-        let ast = parse("2 + 3 - 4 * 5");
+        let ast = ast_of("2 + 3 - 4 * 5");
         assert_eq!(
             eval(&ast, &mut Context::new())
                 .unwrap()
@@ -475,7 +321,7 @@ mod test {
     #[test]
     fn test_assignment() {
         let mut context = Context::new();
-        let ast = parse("var = 2 + 3 - 1");
+        let ast = ast_of("var = 2 + 3 - 1");
         evaluate(&ast, &mut context, ast.start()).unwrap();
         assert_eq!(
             context.get_variable("var").unwrap().natural().unwrap(),
@@ -486,7 +332,7 @@ mod test {
     #[test]
     fn test_definition() {
         let mut context = Context::new();
-        let ast = parse("func(x, y) := x + y");
+        let ast = ast_of("func(x, y) := x + y");
         evaluate(&ast, &mut context, ast.start()).unwrap();
         assert_eq!(context.get_function("func").unwrap().body.render(), "x + y");
     }
