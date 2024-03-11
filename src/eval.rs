@@ -1,6 +1,11 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{builtins, err, outcome::Outcome, parse, Res};
+use crate::{
+    builtins::{self, DEFAULT_GLOBALS},
+    err,
+    outcome::Outcome,
+    parse, Res,
+};
 
 use super::{
     ast::{Ast, Node},
@@ -27,8 +32,6 @@ impl Scope {
     }
 }
 
-const DEFAULT_GLOBALS: &[&str] = &["avg(roll) = quantity(roll) * (dice(roll) + 1) / 2"];
-
 pub struct Context {
     scopes: Vec<Scope>,
 }
@@ -41,8 +44,13 @@ impl Context {
 
         // Add default globals by evaluating them.
         for definition in DEFAULT_GLOBALS {
-            let ast = parse(definition).unwrap();
-            evaluate(&ast, &mut context, ast.start()).unwrap();
+            match parse(definition) {
+                Ok(ast) => evaluate(&ast, &mut context, ast.start()).unwrap(),
+                Err(e) => panic!(
+                    "Failed to evaluate global: {} Definition: {}",
+                    e, definition
+                ),
+            };
         }
 
         context

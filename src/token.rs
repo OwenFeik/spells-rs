@@ -60,7 +60,7 @@ impl Token {
             }
         }
 
-        if c.is_alphabetic() {
+        if c.is_alphabetic() || c == '_' {
             match self {
                 Self::Natural(v) if c == 'd' => return Ok((None, Some(Self::Roll(v, 0)))),
                 Self::Identifier(mut name) => {
@@ -250,6 +250,14 @@ mod test {
                 Token::Operator(Operator::Assign),
                 Token::Natural(2)
             ]
+        )
+    }
+
+    #[test]
+    fn test_tokenise_underscore_identifier() {
+        assert_eq!(
+            tok_unwrap("underscore_name"),
+            vec![Token::Identifier("underscore_name".into())],
         )
     }
 }

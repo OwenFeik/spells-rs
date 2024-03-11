@@ -460,6 +460,18 @@ mod test {
     }
 
     #[test]
+    fn test_simple_assignment() {
+        check_exprs(
+            "var = 0",
+            vec![
+                Node::Identifier("var".into()),
+                Node::Natural(0),
+                Node::Assign(0, 1),
+            ],
+        )
+    }
+
+    #[test]
     fn test_define_assign() {
         check_exprs(
             "fn() = var = 1 + 2",

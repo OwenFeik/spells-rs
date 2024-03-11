@@ -1,16 +1,47 @@
 use crate::{err, eval, outcome::Outcome, roll::Roll, value::Value, Res};
 
-struct GlobalFunction {
+pub const DEFAULT_GLOBALS: &[&str] = &[
+    "STRENGTH = 10",
+    "DEXTERITY = 10",
+    "CONSTITUTION = 10",
+    "INTELLIGENCE = 10",
+    "WISDOM = 10",
+    "CHARISMA = 10",
+    "modifier(stat) = floor((stat - 10) / 2)",
+    "STR() = modifier(STRENGTH)",
+    "DEX() = modifier(DEXTERITY)",
+    "CON() = modifier(CONSTITUTION)",
+    "INT() = modifier(INTELLIGENCE)",
+    "WIS() = modifier(WISDOM)",
+    "CHA() = modifier(CHARISMA)",
+    "LEVEL = 1",
+    "PROF() = floor((LEVEL - 1) / 4) + 2",
+    "EXPT() = PROF() * 2",
+    "WEALTH_CP = 0",
+    "spend_cp(cp) = WEALTH_CP = WEALTH_CP - cp",
+    "gain_cp(cp) = spend_cp(-cp)",
+    "spend_sp(sp) = spend_cp(sp * 10) / 10",
+    "gain_sp(cp) = spend_sp(-cp)",
+    "spend_ep(ep) = spend_cp(ep * 50) / 50",
+    "gain_ep(ep) = spend_ep(-ep)",
+    "spend_gp(gp) = spend_cp(gp * 100) / 100",
+    "gain_gp(gp) = spend_gp(-gp)",
+    "spend_pp(pp) = spend_cp(pp * 1000) / 1000",
+    "gain_pp(pp) = spend_pp(-pp)",
+    "avg(roll) = quantity(roll) * (dice(roll) + 1) / 2",
+];
+
+struct Builtin {
     name: &'static str,
-    call: &'static dyn Fn(&GlobalFunctionCall) -> Res<Outcome>,
+    call: &'static dyn Fn(&BuiltinCall) -> Res<Outcome>,
 }
 
-struct GlobalFunctionCall<'a> {
-    gf: &'a GlobalFunction,
+struct BuiltinCall<'a> {
+    gf: &'a Builtin,
     args: &'a [Value],
 }
 
-impl<'a> GlobalFunctionCall<'a> {
+impl<'a> BuiltinCall<'a> {
     fn single_value(&self) -> Res<Value> {
         eval::check_argument_count(self.gf.name, 1, self.args)?;
 
@@ -27,29 +58,29 @@ impl<'a> GlobalFunctionCall<'a> {
     }
 }
 
-const GLOBALS: &[GlobalFunction] = &[
-    GlobalFunction {
+const BUILTINS: &[Builtin] = &[
+    Builtin {
         name: "ceil",
         call: &|gfc| gfc.single_decimal().map(|v| Outcome::nat(v.ceil() as i32)),
     },
-    GlobalFunction {
+    Builtin {
         name: "floor",
         call: &|gfc| gfc.single_decimal().map(|v| Outcome::nat(v.floor() as i32)),
     },
-    GlobalFunction {
+    Builtin {
         name: "quantity",
         call: &|gfc| gfc.single_roll().map(|r| Outcome::nat(r.quantity as i32)),
     },
-    GlobalFunction {
+    Builtin {
         name: "dice",
         call: &|gfc| gfc.single_roll().map(|r| Outcome::nat(r.die as i32)),
     },
 ];
 
 pub fn call(name: &str, args: &[Value]) -> Res<Outcome> {
-    for gf in GLOBALS {
+    for gf in BUILTINS {
         if gf.name == name {
-            let gfc = GlobalFunctionCall { gf, args };
+            let gfc = BuiltinCall { gf, args };
             return (gf.call)(&gfc);
         }
     }

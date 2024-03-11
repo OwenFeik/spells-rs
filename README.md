@@ -63,9 +63,10 @@ Functions available in the global scope to use in expressions.
 ## Global Variables
 * `?`, the output of the previous command.
 * Player level, `LEVEL`, integer.
+    * Used to calculate `PROF`, proficiency bonus and `EXPT`, expertise bonus.
 * Stats; `STRENGTH`, `DEXTERITY`, `CONSTITUTION`, `INTELLIGENCE`, `WISDOM`, `CHARISMA`.
 * Modifiers; `STR`, `DEX`, `CON`, `INT`, `WIS`, `CHA`
-    * These are calculated from stats like `STR = floor((STRENGTH - 10) / 2)`
+    * Calculated from stats using `modifier(stat) = floor((stat - 10) / 2)`
 
 ## Examples
 ```
