@@ -1,21 +1,14 @@
+use crate::operator::Operator;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token {
     Identifier(String),
     Natural(u32),
     Roll(u32, u32),
+    Operator(Operator),
     ParenOpen,
     ParenClose,
     Comma,
-    Assign,
-    Plus,
-    Minus,
-    Times,
-    Divide,
-    Exp,
-    Keep,
-    Advantage,
-    Disadvantage,
-    Sort,
 }
 
 impl Token {
@@ -24,13 +17,13 @@ impl Token {
             '(' => Some(Self::ParenOpen),
             ')' => Some(Self::ParenClose),
             ',' => Some(Self::Comma),
-            '=' => Some(Self::Assign),
-            '+' => Some(Self::Plus),
-            '-' => Some(Self::Minus),
-            '*' => Some(Self::Times),
-            '/' => Some(Self::Divide),
-            '^' => Some(Self::Exp),
-            'k' => Some(Self::Keep),
+            '=' => Some(Self::Operator(Operator::Assign)),
+            '+' => Some(Self::Operator(Operator::Add)),
+            '-' => Some(Self::Operator(Operator::Sub)),
+            '*' => Some(Self::Operator(Operator::Mul)),
+            '/' => Some(Self::Operator(Operator::Div)),
+            '^' => Some(Self::Operator(Operator::Exp)),
+            'k' => Some(Self::Operator(Operator::Keep)),
             '_' => Some(Self::Identifier(String::from("_"))),
             _ if c.is_numeric() => c.to_digit(10).map(Self::Natural),
             _ if c.is_alphabetic() => Some(Self::Identifier(String::from(c))),
@@ -46,16 +39,7 @@ impl Token {
             Token::ParenOpen => '(',
             Token::ParenClose => ')',
             Token::Comma => ',',
-            Token::Assign => '=',
-            Token::Plus => '+',
-            Token::Minus => '-',
-            Token::Times => '*',
-            Token::Divide => '/',
-            Token::Exp => '^',
-            Token::Keep => 'k',
-            Token::Advantage => 'a',
-            Token::Disadvantage => 'd',
-            Token::Sort => 's',
+            Token::Operator(op) => op.char(),
         }
     }
 
@@ -71,7 +55,7 @@ impl Token {
                 }
                 Self::Natural(v) => return Ok((None, Some(Self::Natural(v * 10 + n)))),
                 Self::Roll(q, s) => return Ok((None, Some(Self::Roll(q, s * 10 + n)))),
-                Self::Disadvantage => return Ok((None, Some(Self::Roll(1, n)))),
+                Self::Operator(Operator::DisAdv) => return Ok((None, Some(Self::Roll(1, n)))),
                 _ => {}
             }
         }
@@ -85,9 +69,9 @@ impl Token {
                 }
                 Self::Roll(..) if c == 'a' || c == 'd' || c == 's' => {
                     return match c {
-                        'a' => Ok((Some(self), Some(Token::Advantage))),
-                        'd' => Ok((Some(self), Some(Token::Disadvantage))),
-                        _ => Ok((Some(self), Some(Token::Sort))),
+                        'a' => Ok((Some(self), Some(Token::Operator(Operator::Adv)))),
+                        'd' => Ok((Some(self), Some(Token::Operator(Operator::DisAdv)))),
+                        _ => Ok((Some(self), Some(Token::Operator(Operator::Sort)))),
                     }
                 }
                 _ if self.char().is_alphabetic() => {
@@ -154,23 +138,23 @@ mod test {
         assert_eq!(
             tok_unwrap("+ - * / ^"),
             vec![
-                Token::Plus,
-                Token::Minus,
-                Token::Times,
-                Token::Divide,
-                Token::Exp
+                Token::Operator(Operator::Add),
+                Token::Operator(Operator::Sub),
+                Token::Operator(Operator::Mul),
+                Token::Operator(Operator::Div),
+                Token::Operator(Operator::Exp)
             ]
         );
         assert_eq!(
             tok_unwrap("d4a d8d k 8d8s"),
             vec![
                 Token::Roll(1, 4),
-                Token::Advantage,
+                Token::Operator(Operator::Adv),
                 Token::Roll(1, 8),
-                Token::Disadvantage,
-                Token::Keep,
+                Token::Operator(Operator::DisAdv),
+                Token::Operator(Operator::Keep),
                 Token::Roll(8, 8),
-                Token::Sort
+                Token::Operator(Operator::Sort)
             ]
         );
     }
@@ -182,13 +166,13 @@ mod test {
             vec![
                 Token::ParenOpen,
                 Token::Roll(1, 4),
-                Token::Times,
+                Token::Operator(Operator::Mul),
                 Token::Natural(3),
                 Token::ParenClose,
-                Token::Plus,
+                Token::Operator(Operator::Add),
                 Token::ParenOpen,
                 Token::Roll(8, 8),
-                Token::Keep,
+                Token::Operator(Operator::Keep),
                 Token::Natural(5),
                 Token::ParenClose
             ]
@@ -201,11 +185,11 @@ mod test {
             tok_unwrap("d20 + PROF + STR + 1"),
             vec![
                 Token::Roll(1, 20),
-                Token::Plus,
+                Token::Operator(Operator::Add),
                 Token::Identifier("PROF".to_string()),
-                Token::Plus,
+                Token::Operator(Operator::Add),
                 Token::Identifier("STR".to_string()),
-                Token::Plus,
+                Token::Operator(Operator::Add),
                 Token::Natural(1)
             ]
         )
@@ -217,13 +201,13 @@ mod test {
             tok_unwrap("d20d dword d aword a d20a"),
             vec![
                 Token::Roll(1, 20),
-                Token::Disadvantage,
+                Token::Operator(Operator::DisAdv),
                 Token::Identifier("dword".to_string()),
                 Token::Identifier("d".to_string()),
                 Token::Identifier("aword".to_string()),
                 Token::Identifier("a".to_string()),
                 Token::Roll(1, 20),
-                Token::Advantage,
+                Token::Operator(Operator::Adv),
             ]
         )
     }
@@ -238,14 +222,14 @@ mod test {
                 Token::Identifier("arg1".into()),
                 Token::Comma,
                 Token::Natural(3),
-                Token::Plus,
+                Token::Operator(Operator::Add),
                 Token::Natural(2),
                 Token::Comma,
                 Token::Identifier("arg2".into()),
                 Token::Comma,
                 Token::ParenOpen,
                 Token::Natural(2),
-                Token::Exp,
+                Token::Operator(Operator::Exp),
                 Token::Natural(3),
                 Token::ParenClose,
                 Token::ParenClose,
@@ -261,9 +245,9 @@ mod test {
                 Token::Identifier("fn".into()),
                 Token::ParenOpen,
                 Token::ParenClose,
-                Token::Assign,
+                Token::Operator(Operator::Assign),
                 Token::Identifier("var".into()),
-                Token::Assign,
+                Token::Operator(Operator::Assign),
                 Token::Natural(2)
             ]
         )

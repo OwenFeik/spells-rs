@@ -4,6 +4,7 @@ mod ast;
 mod builtins;
 mod eval;
 mod input;
+mod operator;
 mod outcome;
 mod parser;
 mod roll;

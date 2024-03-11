@@ -1,144 +1,11 @@
 use crate::{
     ast::{Ast, Node},
-    err, Res,
+    err,
+    operator::Operator,
+    Res,
 };
 
 use super::token::Token;
-
-#[derive(Clone, Copy, Debug)]
-enum Operator {
-    Sentinel,
-    Assign,
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Exp,
-    Neg,
-    Keep,
-    Adv,
-    DisAdv,
-    Sort,
-}
-
-impl Operator {
-    fn precedence(&self) -> u8 {
-        match self {
-            Operator::Sentinel => 0,
-            Operator::Assign => 1,
-            Operator::Add => 2,
-            Operator::Sub => 2,
-            Operator::Mul => 3,
-            Operator::Div => 3,
-            Operator::Exp => 5,
-            Operator::Neg => 4,
-            Operator::Keep => 6,
-            Operator::Adv => 4,
-            Operator::DisAdv => 4,
-            Operator::Sort => 4,
-        }
-    }
-
-    fn left_associative(&self) -> bool {
-        match self {
-            Operator::Sentinel => false,
-            Operator::Assign => false,
-            Operator::Add => true,
-            Operator::Sub => true,
-            Operator::Mul => true,
-            Operator::Div => true,
-            Operator::Exp => false,
-            Operator::Neg => false,
-            Operator::Keep => true,
-            Operator::Adv => false,
-            Operator::DisAdv => false,
-            Operator::Sort => false,
-        }
-    }
-
-    fn is_binary(&self) -> bool {
-        match self {
-            Operator::Sentinel => false,
-            Operator::Assign => true,
-            Operator::Add => true,
-            Operator::Sub => true,
-            Operator::Mul => true,
-            Operator::Div => true,
-            Operator::Exp => true,
-            Operator::Neg => false,
-            Operator::Keep => true,
-            Operator::Adv => false,
-            Operator::DisAdv => false,
-            Operator::Sort => false,
-        }
-    }
-
-    fn binary(self, lhs: usize, rhs: usize) -> Res<Node> {
-        match self {
-            Operator::Assign => Ok(Node::Assign(lhs, rhs)),
-            Operator::Add => Ok(Node::Add(lhs, rhs)),
-            Operator::Sub => Ok(Node::Sub(lhs, rhs)),
-            Operator::Mul => Ok(Node::Mul(lhs, rhs)),
-            Operator::Div => Ok(Node::Div(lhs, rhs)),
-            Operator::Exp => Ok(Node::Exp(lhs, rhs)),
-            Operator::Keep => Ok(Node::Keep(lhs, rhs)),
-            _ => err(format!("{self:?} is not a binary operator.")),
-        }
-    }
-
-    fn is_unary(&self) -> bool {
-        matches!(
-            self,
-            Operator::Neg | Operator::Adv | Operator::DisAdv | Operator::Sort
-        )
-    }
-
-    fn is_unary_postfix(&self) -> bool {
-        matches!(self, Operator::Adv | Operator::DisAdv | Operator::Sort)
-    }
-
-    fn unary(self, operand: usize) -> Res<Node> {
-        match self {
-            Operator::Neg => Ok(Node::Neg(operand)),
-            Operator::Adv => Ok(Node::Adv(operand)),
-            Operator::DisAdv => Ok(Node::DisAdv(operand)),
-            Operator::Sort => Ok(Node::Sort(operand)),
-            _ => err(format!("{self:?} is not a unary operator.")),
-        }
-    }
-
-    fn greater(left: &Self, right: &Self) -> bool {
-        if left.is_binary() && right.is_binary() {
-            (left.precedence() > right.precedence())
-                || (left.left_associative() && left.precedence() == right.precedence())
-        } else if left.is_unary() && right.is_binary() || right.is_unary_postfix() {
-            left.precedence() >= right.precedence()
-        } else {
-            false
-        }
-    }
-
-    fn from(token: &Token) -> Res<Self> {
-        match token {
-            Token::Identifier(name) => err(format!("{name} is not an operator.")),
-            Token::Natural(_) => err("Natural is not an operator."),
-            Token::Roll(_, _) => err("Roll is not an operator."),
-            Token::ParenOpen => err("( is not an operator."),
-            Token::ParenClose => err(") is not an operator."),
-            Token::Comma => err(", is not an operator."),
-            Token::Assign => Ok(Self::Assign),
-            Token::Plus => Ok(Self::Add),
-            Token::Minus => Ok(Self::Sub),
-            Token::Times => Ok(Self::Mul),
-            Token::Divide => Ok(Self::Div),
-            Token::Exp => Ok(Self::Exp),
-            Token::Keep => Ok(Self::Keep),
-            Token::Advantage => Ok(Self::Adv),
-            Token::Disadvantage => Ok(Self::DisAdv),
-            Token::Sort => Ok(Self::Sort),
-        }
-    }
-}
 
 struct Parser<'a> {
     input: &'a [Token],
@@ -170,9 +37,10 @@ impl<'a> Parser<'a> {
     fn expr(&mut self) -> Res<usize> {
         let mut id = self.term()?;
 
-        while let Some(Ok(op)) = self.peek().map(Operator::from)
+        while let Some(Token::Operator(op)) = self.peek()
             && op.is_binary()
         {
+            let op = *op;
             self.push_operator(op);
             self.next()?; // throw away token
             self.term()?;
@@ -209,24 +77,17 @@ impl<'a> Parser<'a> {
             }
             Token::ParenClose => err(") unexpected."),
             Token::Comma => err(", unexpected."),
-            Token::Assign => err("= unexpected."),
-            Token::Plus => err("+ unexpected."),
-            Token::Minus => {
+            Token::Operator(Operator::Sub) | Token::Operator(Operator::Neg) => {
                 self.push_operator(Operator::Neg);
                 self.term()
             }
-            Token::Times => err("* unexpected."),
-            Token::Divide => err("/ unexpected."),
-            Token::Exp => err("^ unexpected."),
-            Token::Keep => err("k unexpected."),
-            Token::Advantage => err("a unexpected."),
-            Token::Disadvantage => err("d unexpected."),
-            Token::Sort => err("s unexpected."),
+            Token::Operator(op) => err(format!("{} unexpected.", op.char())),
         }?;
 
-        while let Some(Ok(op)) = self.peek().map(Operator::from)
+        while let Some(Token::Operator(op)) = self.peek()
             && op.is_unary_postfix()
         {
+            let op = *op;
             self.push_operator(op);
             self.next()?; // throw away token
         }
@@ -349,7 +210,12 @@ mod test {
 
     #[test]
     fn test_parse_addition() {
-        let ast = parse(&[Token::Natural(2), Token::Plus, Token::Natural(3)]).unwrap();
+        let ast = parse(&[
+            Token::Natural(2),
+            Token::Operator(Operator::Add),
+            Token::Natural(3),
+        ])
+        .unwrap();
         assert_eq!(
             ast.exprs(),
             vec![Node::Natural(2), Node::Natural(3), Node::Add(0, 1)]
@@ -359,14 +225,14 @@ mod test {
 
     #[test]
     fn test_negation() {
-        let ast = parse(&[Token::Minus, Token::Natural(3)]).unwrap();
+        let ast = parse(&[Token::Operator(Operator::Sub), Token::Natural(3)]).unwrap();
         assert_eq!(ast.exprs(), vec![Node::Natural(3), Node::Neg(0)]);
         assert_eq!(root(&ast), Some(&Node::Neg(0)));
 
         let ast = parse(&[
             Token::Natural(2),
-            Token::Plus,
-            Token::Minus,
+            Token::Operator(Operator::Add),
+            Token::Operator(Operator::Sub),
             Token::Natural(3),
         ])
         .unwrap();
@@ -385,15 +251,15 @@ mod test {
     #[test]
     fn test_precedence() {
         let ast = parse(&[
-            Token::Minus,
+            Token::Operator(Operator::Sub),
             Token::Natural(2),
-            Token::Plus,
+            Token::Operator(Operator::Add),
             Token::Natural(3),
-            Token::Exp,
+            Token::Operator(Operator::Exp),
             Token::Natural(4),
-            Token::Times,
+            Token::Operator(Operator::Mul),
             Token::Natural(5),
-            Token::Minus,
+            Token::Operator(Operator::Sub),
             Token::Natural(6),
         ])
         .unwrap();
@@ -420,9 +286,9 @@ mod test {
     #[test]
     fn test_neg_precedence() {
         let ast = parse(&[
-            Token::Minus,
+            Token::Operator(Operator::Sub),
             Token::Natural(2),
-            Token::Exp,
+            Token::Operator(Operator::Exp),
             Token::Natural(3),
         ])
         .unwrap();
@@ -434,9 +300,9 @@ mod test {
     fn test_parse_repeated_addition() {
         let ast = parse(&[
             Token::Natural(2),
-            Token::Plus,
+            Token::Operator(Operator::Add),
             Token::Natural(3),
-            Token::Plus,
+            Token::Operator(Operator::Add),
             Token::Natural(4),
         ])
         .unwrap();
@@ -456,9 +322,9 @@ mod test {
     fn test_addition_subtraction() {
         let ast = parse(&[
             Token::Natural(3),
-            Token::Minus,
+            Token::Operator(Operator::Sub),
             Token::Natural(4),
-            Token::Plus,
+            Token::Operator(Operator::Add),
             Token::Natural(5),
         ])
         .unwrap();
@@ -475,20 +341,13 @@ mod test {
     }
 
     #[test]
-    fn test_binary_operators() {
-        let token = Some(&Token::Plus);
-        if let Some(Ok(op)) = token.map(Operator::from)
-            && op.is_binary()
-        {
-            assert!(matches!(op, Operator::Add));
-        } else {
-            panic!();
-        }
-    }
-
-    #[test]
     fn test_keep() {
-        let ast = parse(&[Token::Roll(10, 8), Token::Keep, Token::Natural(8)]).unwrap();
+        let ast = parse(&[
+            Token::Roll(10, 8),
+            Token::Operator(Operator::Keep),
+            Token::Natural(8),
+        ])
+        .unwrap();
         assert_eq!(
             ast.exprs(),
             vec![Node::Roll(10, 8), Node::Natural(8), Node::Keep(0, 1)]
@@ -499,15 +358,15 @@ mod test {
     fn test_roll_operators() {
         let ast = parse(&[
             Token::Roll(1, 20),
-            Token::Advantage,
-            Token::Plus,
+            Token::Operator(Operator::Adv),
+            Token::Operator(Operator::Add),
             Token::Roll(1, 4),
-            Token::Disadvantage,
-            Token::Plus,
+            Token::Operator(Operator::DisAdv),
+            Token::Operator(Operator::Add),
             Token::Roll(10, 8),
-            Token::Keep,
+            Token::Operator(Operator::Keep),
             Token::Natural(8),
-            Token::Sort,
+            Token::Operator(Operator::Sort),
         ])
         .unwrap();
 
