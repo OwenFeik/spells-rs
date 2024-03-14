@@ -4,6 +4,7 @@ mod ast;
 mod builtins;
 mod eval;
 mod input;
+mod load;
 mod operator;
 mod outcome;
 mod parser;
@@ -28,6 +29,10 @@ fn eval(input: &str, context: &mut eval::Context) -> Res<outcome::Outcome> {
 fn main() {
     let mut input = input::Input::new();
     let mut context = eval::Context::new();
+    if let Err(e) = load::load(&mut context) {
+        println!("{e}");
+    }
+
     let mut interrupted = false;
     loop {
         match input.line() {
@@ -43,7 +48,12 @@ fn main() {
                     println!("Ctrl-C again to exit gracelessly.")
                 }
             }
-            Err(input::InputError::Eof) => break,
+            Err(input::InputError::Eof) => {
+                if let Err(e) = load::save(&context) {
+                    println!("{e}");
+                }
+                break;
+            }
             Err(input::InputError::Other(e)) => println!("Input error: {e}"),
         }
     }

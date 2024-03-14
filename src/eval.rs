@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, fmt::Display, rc::Rc, sync::atomic::AtomicUsize};
 
 use crate::{
     builtins::{self, DEFAULT_GLOBALS},
@@ -16,6 +16,36 @@ struct Function {
     name: String,
     body: Ast,
     parameters: Vec<String>,
+
+    /// Unique ID of this function. This keeps track of declaration order, which
+    /// is important because when we are saving defined functions, we need to
+    /// ensure that all functions used within a function are available in the
+    /// scope the function is evaluated in.
+    id: usize,
+}
+
+impl Function {
+    fn new<S: ToString>(name: S, body: Ast, parameters: Vec<String>) -> Self {
+        static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
+        Self {
+            name: name.to_string(),
+            body,
+            parameters,
+            id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        }
+    }
+}
+
+impl Display for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}({}) = {}",
+            &self.name,
+            self.parameters.join(", "),
+            self.body.render()
+        )
+    }
 }
 
 struct Scope {
@@ -34,30 +64,52 @@ impl Scope {
 
 pub struct Context {
     scopes: Vec<Scope>,
+    initialised: bool,
 }
 
 impl Context {
+    const GLOBAL_SCOPE_INDEX: usize = 0;
+    const USER_SCOPE_INDEX: usize = 1;
+
     pub fn new() -> Self {
         let mut context = Self {
-            scopes: vec![Scope::new()],
+            scopes: vec![Scope::new(), Scope::new()],
+            initialised: false,
         };
 
         // Add default globals by evaluating them.
         for definition in DEFAULT_GLOBALS {
-            match parse(definition) {
-                Ok(ast) => evaluate(&ast, &mut context, ast.start()).unwrap(),
-                Err(e) => panic!(
+            if let Err(e) = context.eval(&definition) {
+                panic!(
                     "Failed to evaluate global: {} Definition: {}",
                     e, definition
-                ),
+                );
             };
         }
 
+        context.initialised = true;
         context
     }
 
-    fn globals(&mut self) -> &mut Scope {
-        self.scopes.get_mut(0).expect("Global scope popped.")
+    fn definition_scope(&mut self) -> &mut Scope {
+        let index = if self.initialised {
+            Self::USER_SCOPE_INDEX
+        } else {
+            Self::GLOBAL_SCOPE_INDEX
+        };
+        self.scopes.get_mut(index).expect("Permanent scope popped.")
+    }
+
+    fn push_scope(&mut self) -> &mut Scope {
+        self.scopes.push(Scope::new());
+        self.scopes.last_mut().unwrap()
+    }
+
+    fn pop_scope(&mut self) {
+        // Never pop user or global scope.
+        if self.scopes.len() > 2 {
+            self.scopes.pop();
+        }
     }
 
     fn get_variable(&self, name: &str) -> Option<Value> {
@@ -70,7 +122,9 @@ impl Context {
     }
 
     fn set_variable<S: ToString>(&mut self, name: S, value: Value) {
-        self.globals().variables.insert(name.to_string(), value);
+        self.definition_scope()
+            .variables
+            .insert(name.to_string(), value);
     }
 
     fn get_function(&self, name: &str) -> Option<Rc<Function>> {
@@ -83,25 +137,50 @@ impl Context {
     }
 
     fn define_function(&mut self, function: Function) {
-        self.globals()
+        self.definition_scope()
             .functions
             .insert(function.name.clone(), Rc::new(function));
     }
 
     fn call(&mut self, name: &str, args: Vec<Value>) -> Res<Outcome> {
         if let Some(function) = self.get_function(name) {
-            let mut scope = Scope::new();
+            let scope = self.push_scope();
             check_argument_count(name, function.parameters.len(), &args)?;
             for (name, value) in function.parameters.iter().zip(args) {
                 scope.variables.insert(name.clone(), value);
             }
-            self.scopes.push(scope);
             let ret = evaluate(&function.body, self, function.body.start());
-            self.scopes.pop();
+            self.pop_scope();
             ret
         } else {
             builtins::call(name, &args)
         }
+    }
+
+    pub fn eval(&mut self, statement: &str) -> Res<()> {
+        let ast = parse(statement)?;
+        evaluate(&ast, self, ast.start()).map(|_| ())
+    }
+
+    pub fn dump_to_string(&self) -> String {
+        let mut ret = String::new();
+
+        let user_scope = self
+            .scopes
+            .get(Self::USER_SCOPE_INDEX)
+            .expect("User scope popped.");
+
+        // Sort functions by definition order.
+        let mut functions: Vec<&Rc<Function>> = user_scope.functions.values().collect();
+        functions.sort_by(|a, b| (a.id).cmp(&b.id));
+        for func in functions {
+            ret += &format!("{func}\n");
+        }
+
+        for (k, v) in &user_scope.variables {
+            ret += &format!("{k} = {v}\n");
+        }
+        ret
     }
 }
 
@@ -134,11 +213,7 @@ fn define(
         return err("Failed to get subtree for definition.");
     };
 
-    context.define_function(Function {
-        name: name.to_string(),
-        body,
-        parameters,
-    });
+    context.define_function(Function::new(name, body, parameters));
     Ok(Outcome::new(Value::Empty))
 }
 
