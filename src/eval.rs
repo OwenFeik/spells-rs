@@ -268,8 +268,7 @@ fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
             &Node::Keep(lhs, rhs) => {
                 evaluate(ast, context, lhs)?.keep(evaluate(ast, context, rhs)?)
             }
-            &Node::Roll(q, d) => Ok(Outcome::roll(q, d)),
-            &Node::Natural(v) => Ok(Outcome::nat(v as i32)),
+            Node::Value(val) => Ok(Outcome::new(val.clone())),
             Node::Call(name, args) => call(ast, context, name, args),
             Node::Identifier(name) => variable(ast, context, name),
         }

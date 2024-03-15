@@ -1,4 +1,6 @@
-#[derive(Clone, Debug, PartialEq, Eq)]
+use crate::value::Value;
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Node {
     Assign(usize, usize),
     Call(String, Vec<usize>),
@@ -12,9 +14,8 @@ pub enum Node {
     DisAdv(usize),
     Sort(usize),
     Keep(usize, usize),
-    Roll(u32, u32),
-    Natural(u32),
     Identifier(String),
+    Value(Value),
 }
 
 impl Node {
@@ -65,7 +66,7 @@ impl Node {
                 }
                 Some(to.add(Node::Call(name.clone(), new_args)))
             }
-            Node::Roll(_, _) | Node::Natural(_) | Node::Identifier(_) => Some(to.add(self.clone())),
+            Node::Value(_) | Node::Identifier(_) => Some(to.add(self.clone())),
         }
     }
 
@@ -131,14 +132,9 @@ impl Ast {
                 &Node::DisAdv(arg) => format!("{}d", self._render(arg)),
                 &Node::Sort(arg) => format!("{}s", self._render(arg)),
                 &Node::Keep(lhs, rhs) => format!("{}k{}", self._render(lhs), self._render(rhs)),
-                &Node::Roll(q, d) => {
-                    if q == 1 {
-                        format!("d{d}")
-                    } else {
-                        format!("{q}d{d}")
-                    }
-                }
-                &Node::Natural(n) => n.to_string(),
+                Node::Value(Value::Outcome(oc)) => format!("{}", oc.roll),
+                Node::Value(Value::Empty) => "ERROR".to_string(),
+                Node::Value(v) => format!("{v}"),
                 Node::Identifier(name) => name.clone(),
                 Node::Call(name, args) => {
                     format!(

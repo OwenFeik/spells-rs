@@ -2,6 +2,8 @@ use crate::{
     ast::{Ast, Node},
     err,
     operator::Operator,
+    roll::Roll,
+    value::Value,
     Res,
 };
 
@@ -66,8 +68,9 @@ impl<'a> Parser<'a> {
                     Ok(id)
                 }
             }
-            Token::Natural(n) => Ok(self.push_operand(Node::Natural(n))),
-            Token::Roll(q, d) => Ok(self.push_operand(Node::Roll(q, d))),
+            Token::Natural(n) => Ok(self.push_operand(Node::Value(Value::Natural(n as i32)))),
+            Token::Roll(q, d) => Ok(self.push_operand(Node::Value(Value::Roll(Roll::new(q, d))))),
+            Token::String(val) => Ok(self.push_operand(Node::Value(Value::String(val)))),
             Token::ParenOpen => {
                 self.operators.push(Operator::Sentinel);
                 let id = self.expr()?;
@@ -76,6 +79,8 @@ impl<'a> Parser<'a> {
                 Ok(id)
             }
             Token::ParenClose => err(") unexpected."),
+            Token::BracketOpen => todo!("parse list"),
+            Token::BracketClose => err("] unexpected."),
             Token::Comma => err(", unexpected."),
             Token::Operator(Operator::Sub) | Token::Operator(Operator::Neg) => {
                 self.push_operator(Operator::Neg);
@@ -218,7 +223,11 @@ mod test {
         .unwrap();
         assert_eq!(
             ast.exprs(),
-            vec![Node::Natural(2), Node::Natural(3), Node::Add(0, 1)]
+            vec![
+                Node::Value(Value::Natural(2)),
+                Node::Value(Value::Natural(3)),
+                Node::Add(0, 1)
+            ]
         );
         assert_eq!(root(&ast), Some(&Node::Add(0, 1)));
     }
@@ -226,7 +235,10 @@ mod test {
     #[test]
     fn test_negation() {
         let ast = parse(&[Token::Operator(Operator::Sub), Token::Natural(3)]).unwrap();
-        assert_eq!(ast.exprs(), vec![Node::Natural(3), Node::Neg(0)]);
+        assert_eq!(
+            ast.exprs(),
+            vec![Node::Value(Value::Natural(3)), Node::Neg(0)]
+        );
         assert_eq!(root(&ast), Some(&Node::Neg(0)));
 
         let ast = parse(&[
@@ -239,8 +251,8 @@ mod test {
         assert_eq!(
             ast.exprs(),
             vec![
-                Node::Natural(2),
-                Node::Natural(3),
+                Node::Value(Value::Natural(2)),
+                Node::Value(Value::Natural(3)),
                 Node::Neg(1),
                 Node::Add(0, 2)
             ]
@@ -268,15 +280,15 @@ mod test {
         assert_eq!(
             ast.exprs(),
             vec![
-                Node::Natural(2),
+                Node::Value(Value::Natural(2)),
                 Node::Neg(0),
-                Node::Natural(3),
-                Node::Natural(4),
+                Node::Value(Value::Natural(3)),
+                Node::Value(Value::Natural(4)),
                 Node::Exp(2, 3),
-                Node::Natural(5),
+                Node::Value(Value::Natural(5)),
                 Node::Mul(4, 5),
                 Node::Add(1, 6),
-                Node::Natural(6),
+                Node::Value(Value::Natural(6)),
                 Node::Sub(7, 8)
             ]
         );
@@ -309,10 +321,10 @@ mod test {
         assert_eq!(
             ast.exprs(),
             vec![
-                Node::Natural(2),
-                Node::Natural(3),
+                Node::Value(Value::Natural(2)),
+                Node::Value(Value::Natural(3)),
                 Node::Add(0, 1),
-                Node::Natural(4),
+                Node::Value(Value::Natural(4)),
                 Node::Add(2, 3)
             ]
         );
@@ -331,10 +343,10 @@ mod test {
         assert_eq!(
             ast.exprs(),
             vec![
-                Node::Natural(3),
-                Node::Natural(4),
+                Node::Value(Value::Natural(3)),
+                Node::Value(Value::Natural(4)),
                 Node::Sub(0, 1),
-                Node::Natural(5),
+                Node::Value(Value::Natural(5)),
                 Node::Add(2, 3)
             ]
         );
@@ -350,7 +362,11 @@ mod test {
         .unwrap();
         assert_eq!(
             ast.exprs(),
-            vec![Node::Roll(10, 8), Node::Natural(8), Node::Keep(0, 1)]
+            vec![
+                Node::Value(Value::Roll(Roll::new(10, 8))),
+                Node::Value(Value::Natural(8)),
+                Node::Keep(0, 1)
+            ]
         );
     }
 
@@ -374,13 +390,13 @@ mod test {
         assert_eq!(
             ast.exprs(),
             vec![
-                Node::Roll(1, 20),
+                Node::Value(Value::Roll(Roll::new(1, 20))),
                 Node::Adv(0),
-                Node::Roll(1, 4),
+                Node::Value(Value::Roll(Roll::new(1, 4))),
                 Node::DisAdv(2),
                 Node::Add(1, 3),
-                Node::Roll(10, 8),
-                Node::Natural(8),
+                Node::Value(Value::Roll(Roll::new(10, 8))),
+                Node::Value(Value::Natural(8)),
                 Node::Keep(5, 6),
                 Node::Sort(7),
                 Node::Add(4, 8)
@@ -393,11 +409,11 @@ mod test {
         check_exprs(
             "4 + 3 - 2 * 5",
             vec![
-                Node::Natural(4),
-                Node::Natural(3),
+                Node::Value(Value::Natural(4)),
+                Node::Value(Value::Natural(3)),
                 Node::Add(0, 1),
-                Node::Natural(2),
-                Node::Natural(5),
+                Node::Value(Value::Natural(2)),
+                Node::Value(Value::Natural(5)),
                 Node::Mul(3, 4),
                 Node::Sub(2, 5),
             ],
@@ -409,11 +425,11 @@ mod test {
         check_exprs(
             "-5^3*3",
             vec![
-                Node::Natural(5),
-                Node::Natural(3),
+                Node::Value(Value::Natural(5)),
+                Node::Value(Value::Natural(3)),
                 Node::Exp(0, 1),
                 Node::Neg(2),
-                Node::Natural(3),
+                Node::Value(Value::Natural(3)),
                 Node::Mul(3, 4),
             ],
         );
@@ -425,7 +441,7 @@ mod test {
             "var + 3",
             vec![
                 Node::Identifier("var".into()),
-                Node::Natural(3),
+                Node::Value(Value::Natural(3)),
                 Node::Add(0, 1),
             ],
         )
@@ -451,8 +467,8 @@ mod test {
             "var = 2 + 3",
             vec![
                 Node::Identifier("var".into()),
-                Node::Natural(2),
-                Node::Natural(3),
+                Node::Value(Value::Natural(2)),
+                Node::Value(Value::Natural(3)),
                 Node::Add(1, 2),
                 Node::Assign(0, 3),
             ],
@@ -465,7 +481,7 @@ mod test {
             "var = 0",
             vec![
                 Node::Identifier("var".into()),
-                Node::Natural(0),
+                Node::Value(Value::Natural(0)),
                 Node::Assign(0, 1),
             ],
         )
@@ -478,8 +494,8 @@ mod test {
             vec![
                 Node::Call("fn".into(), Vec::new()),
                 Node::Identifier("var".into()),
-                Node::Natural(1),
-                Node::Natural(2),
+                Node::Value(Value::Natural(1)),
+                Node::Value(Value::Natural(2)),
                 Node::Add(2, 3),
                 Node::Assign(1, 4),
                 Node::Assign(0, 5),
@@ -492,9 +508,9 @@ mod test {
         check_exprs(
             "fn(1, 2, 3)",
             vec![
-                Node::Natural(1),
-                Node::Natural(2),
-                Node::Natural(3),
+                Node::Value(Value::Natural(1)),
+                Node::Value(Value::Natural(2)),
+                Node::Value(Value::Natural(3)),
                 Node::Call("fn".into(), vec![0, 1, 2]),
             ],
         )
@@ -511,7 +527,7 @@ mod test {
             "outer(inner1(), inner2(3))",
             vec![
                 Node::Call("inner1".into(), Vec::new()),
-                Node::Natural(3),
+                Node::Value(Value::Natural(3)),
                 Node::Call("inner2".into(), vec![1]),
                 Node::Call("outer".into(), vec![0, 2]),
             ],
@@ -523,9 +539,9 @@ mod test {
         check_exprs(
             "5 + fn() * 2",
             vec![
-                Node::Natural(5),
+                Node::Value(Value::Natural(5)),
                 Node::Call("fn".into(), Vec::new()),
-                Node::Natural(2),
+                Node::Value(Value::Natural(2)),
                 Node::Mul(1, 2),
                 Node::Add(0, 3),
             ],
@@ -541,9 +557,9 @@ mod test {
                 Node::Call("avg".into(), vec![0]),
                 Node::Identifier("roll".into()),
                 Node::Call("dice".into(), vec![2]),
-                Node::Natural(1),
+                Node::Value(Value::Natural(1)),
                 Node::Add(3, 4),
-                Node::Natural(2),
+                Node::Value(Value::Natural(2)),
                 Node::Div(5, 6),
                 Node::Assign(1, 7),
             ],
@@ -559,13 +575,13 @@ mod test {
                 Node::name("inb"),
                 Node::Call("func".into(), vec![0, 1]),
                 Node::name("ina"),
-                Node::Natural(1),
+                Node::Value(Value::Natural(1)),
                 Node::Call("f1".into(), vec![3, 4]),
                 Node::name("inb"),
-                Node::Natural(2),
+                Node::Value(Value::Natural(2)),
                 Node::Call("f2".into(), vec![6, 7]),
                 Node::Add(5, 8),
-                Node::Natural(2),
+                Node::Value(Value::Natural(2)),
                 Node::Mul(9, 10),
                 Node::Assign(2, 11),
             ],

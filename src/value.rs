@@ -13,6 +13,7 @@ pub enum Value {
     Outcome(RollOutcome),
     Roll(Roll),
     Values(Vec<u32>),
+    String(String),
     Empty,
 }
 
@@ -24,6 +25,7 @@ impl Value {
             Self::Roll(..) => Self::Values(self.values()?).decimal(),
             Self::Outcome(outcome) => Ok(outcome.result as f32),
             Self::Values(_) => Ok(self.natural()? as f32),
+            Self::String(_) => err("String cannot be interpreted as decimal."),
             Self::Empty => err("Empty cannot be interpreted as decimal."),
         }
     }
@@ -35,6 +37,7 @@ impl Value {
             Self::Outcome(outcome) => Ok(outcome.result as i32),
             Self::Roll(_) => Ok(self.outcome()?.result as i32),
             Self::Values(values) => Ok(values.iter().sum::<u32>() as i32),
+            Self::String(_) => err("String cannot be interpreted as natural."),
             Self::Empty => err("Empty cannot be interpreted as natural."),
         }
     }
@@ -46,6 +49,7 @@ impl Value {
             Self::Roll(..) => Ok(self.outcome()?.values),
             Self::Outcome(outcome) => Ok(outcome.values),
             Self::Values(values) => Ok(values),
+            Self::String(_) => err("String cannot be interpreted as values."),
             Self::Empty => err("Empty cannot be interpreted as values."),
         }
     }
@@ -117,6 +121,7 @@ impl Display for Value {
                         .join(", ")
                 )
             }
+            Value::String(s) => write!(f, r#""{s}""#),
             Value::Empty => write!(f, "()"),
         }
     }

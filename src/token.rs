@@ -1,4 +1,4 @@
-use crate::operator::Operator;
+use crate::{operator::Operator, Res};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token {
@@ -6,17 +6,23 @@ pub enum Token {
     Natural(u32),
     Roll(u32, u32),
     Operator(Operator),
+    String(String),
     ParenOpen,
     ParenClose,
+    BracketOpen,
+    BracketClose,
     Comma,
 }
 
 impl Token {
     fn from(c: char) -> Option<Self> {
         match c {
+            ',' => Some(Self::Comma),
             '(' => Some(Self::ParenOpen),
             ')' => Some(Self::ParenClose),
-            ',' => Some(Self::Comma),
+            '[' => Some(Self::BracketOpen),
+            ']' => Some(Self::BracketClose),
+            '"' => Some(Self::String(String::new())),
             '=' => Some(Self::Operator(Operator::Assign)),
             '+' => Some(Self::Operator(Operator::Add)),
             '-' => Some(Self::Operator(Operator::Sub)),
@@ -36,14 +42,35 @@ impl Token {
             Token::Identifier(_) => '!',
             Token::Natural(_) => '#',
             Token::Roll(_, _) => '%',
+            Token::String(_) => '"',
             Token::ParenOpen => '(',
             Token::ParenClose => ')',
+            Token::BracketOpen => '[',
+            Token::BracketClose => ']',
             Token::Comma => ',',
             Token::Operator(op) => op.char(),
         }
     }
 
-    fn consume(self, c: char) -> Result<(Option<Self>, Option<Self>), String> {
+    fn consume(self, c: char) -> Res<(Option<Self>, Option<Self>)> {
+        if let Token::String(mut val) = self {
+            return match c {
+                '"' => {
+                    if val.ends_with('\\') {
+                        val.truncate(val.len() - 1);
+                        val.push('"');
+                        Ok((None, Some(Self::String(val))))
+                    } else {
+                        Ok((Some(Self::String(val)), None))
+                    }
+                }
+                _ => {
+                    val.push(c);
+                    Ok((None, Some(Self::String(val))))
+                }
+            };
+        }
+
         if let Some(n) = c.to_digit(10) {
             match self {
                 Self::Identifier(d) if d == "d" => {
@@ -258,6 +285,20 @@ mod test {
         assert_eq!(
             tok_unwrap("underscore_name"),
             vec![Token::Identifier("underscore_name".into())],
+        )
+    }
+
+    #[test]
+    fn test_tokenise_string() {
+        assert_eq!(
+            tok_unwrap(r#"var = "string1" + "string2""#),
+            vec![
+                Token::Identifier("var".into()),
+                Token::Operator(Operator::Assign),
+                Token::String("string1".into()),
+                Token::Operator(Operator::Add),
+                Token::String("string2".into())
+            ]
         )
     }
 }
