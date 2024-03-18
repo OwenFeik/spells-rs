@@ -3,6 +3,7 @@ use std::{collections::HashMap, fmt::Display, rc::Rc, sync::atomic::AtomicUsize}
 use crate::{
     builtins::{self, DEFAULT_GLOBALS},
     err,
+    operator::Operator,
     outcome::Outcome,
     parse, Res,
 };
@@ -252,22 +253,45 @@ fn variable(ast: &Ast, context: &mut Context, name: &str) -> Res<Outcome> {
     err(format!("Undefined variable: {name}."))
 }
 
+fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize) -> Res<Outcome> {
+    if matches!(op, Operator::Assign) {
+        assign(ast, context, lhs, rhs)
+    } else {
+        let lhs_val = evaluate(ast, context, lhs)?;
+        let rhs_val = evaluate(ast, context, rhs)?;
+        match op {
+            Operator::Assign => err("Operator::Asssign doesn't match Operator::Assign."),
+            Operator::Add => lhs_val.add(rhs_val),
+            Operator::Sub => lhs_val.sub(rhs_val),
+            Operator::Mul => lhs_val.mul(rhs_val),
+            Operator::Div => lhs_val.div(rhs_val),
+            Operator::Exp => lhs_val.exp(rhs_val),
+            Operator::Keep => lhs_val.keep(rhs_val),
+            Operator::Sentinel
+            | Operator::Neg
+            | Operator::Adv
+            | Operator::DisAdv
+            | Operator::Sort => Err(format!("Not a binary operator: {}", op.char())),
+        }
+    }
+}
+
+fn unary(ast: &Ast, context: &mut Context, op: Operator, arg: usize) -> Res<Outcome> {
+    let val = evaluate(ast, context, arg)?;
+    match op {
+        Operator::Neg => val.neg(),
+        Operator::Adv => val.adv(),
+        Operator::DisAdv => val.disadv(),
+        Operator::Sort => val.sort(),
+        _ => Err(format!("Not a unary operator: {}", op.char())),
+    }
+}
+
 fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
     if let Some(expr) = ast.get(index) {
         match expr {
-            &Node::Assign(destination, definition) => assign(ast, context, destination, definition),
-            &Node::Add(lhs, rhs) => evaluate(ast, context, lhs)?.add(evaluate(ast, context, rhs)?),
-            &Node::Sub(lhs, rhs) => evaluate(ast, context, lhs)?.sub(evaluate(ast, context, rhs)?),
-            &Node::Mul(lhs, rhs) => evaluate(ast, context, lhs)?.mul(evaluate(ast, context, rhs)?),
-            &Node::Div(lhs, rhs) => evaluate(ast, context, lhs)?.div(evaluate(ast, context, rhs)?),
-            &Node::Exp(lhs, rhs) => evaluate(ast, context, lhs)?.exp(evaluate(ast, context, rhs)?),
-            &Node::Neg(arg) => evaluate(ast, context, arg)?.neg(),
-            &Node::Adv(arg) => evaluate(ast, context, arg)?.adv(),
-            &Node::DisAdv(arg) => evaluate(ast, context, arg)?.disadv(),
-            &Node::Sort(arg) => evaluate(ast, context, arg)?.sort(),
-            &Node::Keep(lhs, rhs) => {
-                evaluate(ast, context, lhs)?.keep(evaluate(ast, context, rhs)?)
-            }
+            &Node::Binary(lhs, op, rhs) => binary(ast, context, op, lhs, rhs),
+            &Node::Unary(arg, op) => unary(ast, context, op, arg),
             Node::Value(val) => Ok(Outcome::new(val.clone())),
             Node::Call(name, args) => call(ast, context, name, args),
             Node::Identifier(name) => variable(ast, context, name),

@@ -1,63 +1,25 @@
-use crate::value::Value;
+use crate::{operator::Operator, value::Value};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Node {
-    Assign(usize, usize),
     Call(String, Vec<usize>),
-    Add(usize, usize),
-    Sub(usize, usize),
-    Mul(usize, usize),
-    Div(usize, usize),
-    Exp(usize, usize),
-    Neg(usize),
-    Adv(usize),
-    DisAdv(usize),
-    Sort(usize),
-    Keep(usize, usize),
+    Binary(usize, Operator, usize),
+    Unary(usize, Operator),
     Identifier(String),
     Value(Value),
 }
 
 impl Node {
-    fn renumber_binary(&self, lhs: usize, rhs: usize) -> Self {
-        match self {
-            Node::Assign(_, _) => Node::Assign(lhs, rhs),
-            Node::Add(_, _) => Node::Add(lhs, rhs),
-            Node::Sub(_, _) => Node::Sub(lhs, rhs),
-            Node::Mul(_, _) => Node::Mul(lhs, rhs),
-            Node::Div(_, _) => Node::Div(lhs, rhs),
-            Node::Exp(_, _) => Node::Exp(lhs, rhs),
-            Node::Keep(_, _) => Node::Keep(lhs, rhs),
-            _ => self.clone(),
-        }
-    }
-
-    fn renumber_unary(&self, arg: usize) -> Self {
-        match self {
-            Node::Neg(_) => Node::Neg(arg),
-            Node::Adv(_) => Node::Adv(arg),
-            Node::DisAdv(_) => Node::DisAdv(arg),
-            Node::Sort(_) => Node::Sort(arg),
-            _ => self.clone(),
-        }
-    }
-
     fn copy(&self, from: &Ast, to: &mut Ast) -> Option<usize> {
         match self {
-            &Node::Assign(lhs, rhs)
-            | &Node::Add(lhs, rhs)
-            | &Node::Sub(lhs, rhs)
-            | &Node::Mul(lhs, rhs)
-            | &Node::Div(lhs, rhs)
-            | &Node::Exp(lhs, rhs)
-            | &Node::Keep(lhs, rhs) => {
+            &Node::Binary(lhs, op, rhs) => {
                 let lhs = from.get(lhs)?.copy(from, to)?;
                 let rhs = from.get(rhs)?.copy(from, to)?;
-                Some(to.add(self.renumber_binary(lhs, rhs)))
+                Some(to.add(Self::Binary(lhs, op, rhs)))
             }
-            &Node::Neg(arg) | &Node::Adv(arg) | &Node::DisAdv(arg) | &Node::Sort(arg) => {
+            &Node::Unary(arg, op) => {
                 let arg = from.get(arg)?.copy(from, to)?;
-                Some(to.add(self.renumber_unary(arg)))
+                Some(to.add(Self::Unary(arg, op)))
             }
             Node::Call(name, args) => {
                 let mut new_args = Vec::new();
@@ -66,7 +28,8 @@ impl Node {
                 }
                 Some(to.add(Node::Call(name.clone(), new_args)))
             }
-            Node::Value(_) | Node::Identifier(_) => Some(to.add(self.clone())),
+            Node::Identifier(name) => Some(to.add(Self::Identifier(name.clone()))),
+            Node::Value(val) => Some(to.add(Self::Value(val.clone()))),
         }
     }
 
@@ -119,19 +82,17 @@ impl Ast {
     fn _render(&self, id: usize) -> String {
         if let Some(node) = self.get(id) {
             match node {
-                &Node::Assign(lhs, rhs) => {
-                    format!("{} = {}", self._render(lhs), self._render(rhs))
+                &Node::Binary(lhs, op, rhs) => {
+                    format!("{} {} {}", self._render(lhs), op.char(), self._render(rhs))
                 }
-                &Node::Add(lhs, rhs) => format!("{} + {}", self._render(lhs), self._render(rhs)),
-                &Node::Sub(lhs, rhs) => format!("{} - {}", self._render(lhs), self._render(rhs)),
-                &Node::Mul(lhs, rhs) => format!("{} * {}", self._render(lhs), self._render(rhs)),
-                &Node::Div(lhs, rhs) => format!("{} / {}", self._render(lhs), self._render(rhs)),
-                &Node::Exp(lhs, rhs) => format!("{} ^ {}", self._render(lhs), self._render(rhs)),
-                &Node::Neg(arg) => format!("-{}", self._render(arg)),
-                &Node::Adv(arg) => format!("{}a", self._render(arg)),
-                &Node::DisAdv(arg) => format!("{}d", self._render(arg)),
-                &Node::Sort(arg) => format!("{}s", self._render(arg)),
-                &Node::Keep(lhs, rhs) => format!("{}k{}", self._render(lhs), self._render(rhs)),
+                &Node::Unary(arg, op) => {
+                    let arg = self._render(arg);
+                    if op.is_unary_postfix() {
+                        format!("{}{}", arg, op.char())
+                    } else {
+                        format!("{}{}", op.char(), arg)
+                    }
+                }
                 Node::Value(Value::Outcome(oc)) => format!("{}", oc.roll),
                 Node::Value(Value::Empty) => "ERROR".to_string(),
                 Node::Value(v) => format!("{v}"),

@@ -161,10 +161,10 @@ impl<'a> Parser<'a> {
             if op.is_binary() {
                 let rhs = self.pop_operand()?;
                 let lhs = self.pop_operand()?;
-                Ok(self.push_operand(op.binary(lhs, rhs)?))
+                Ok(self.push_operand(Node::Binary(lhs, op, rhs)))
             } else if op.is_unary() {
-                let operand = self.pop_operand()?;
-                Ok(self.push_operand(op.unary(operand)?))
+                let arg = self.pop_operand()?;
+                Ok(self.push_operand(Node::Unary(arg, op)))
             } else {
                 err("Attempted to pop Sentinel operator.")
             }
@@ -226,10 +226,10 @@ mod test {
             vec![
                 Node::Value(Value::Natural(2)),
                 Node::Value(Value::Natural(3)),
-                Node::Add(0, 1)
+                Node::Binary(0, Operator::Add, 1)
             ]
         );
-        assert_eq!(root(&ast), Some(&Node::Add(0, 1)));
+        assert_eq!(root(&ast), Some(&Node::Binary(0, Operator::Add, 1)));
     }
 
     #[test]
@@ -237,9 +237,12 @@ mod test {
         let ast = parse(&[Token::Operator(Operator::Sub), Token::Natural(3)]).unwrap();
         assert_eq!(
             ast.exprs(),
-            vec![Node::Value(Value::Natural(3)), Node::Neg(0)]
+            vec![
+                Node::Value(Value::Natural(3)),
+                Node::Unary(0, Operator::Neg)
+            ]
         );
-        assert_eq!(root(&ast), Some(&Node::Neg(0)));
+        assert_eq!(root(&ast), Some(&Node::Unary(0, Operator::Neg)));
 
         let ast = parse(&[
             Token::Natural(2),
@@ -253,11 +256,11 @@ mod test {
             vec![
                 Node::Value(Value::Natural(2)),
                 Node::Value(Value::Natural(3)),
-                Node::Neg(1),
-                Node::Add(0, 2)
+                Node::Unary(1, Operator::Neg),
+                Node::Binary(0, Operator::Add, 2)
             ]
         );
-        assert_eq!(root(&ast), Some(&Node::Add(0, 2)));
+        assert_eq!(root(&ast), Some(&Node::Binary(0, Operator::Add, 2)));
     }
 
     #[test]
@@ -276,23 +279,23 @@ mod test {
         ])
         .unwrap();
 
-        // -2 + 3 * 4 - 5 = ((-2) + ((3 ^ 4) * 5)) - 6
+        // -2 + 3 ^ 4 * 5 - 6 = ((-2) + ((3 ^ 4) * 5)) - 6
         assert_eq!(
             ast.exprs(),
             vec![
                 Node::Value(Value::Natural(2)),
-                Node::Neg(0),
+                Node::Unary(0, Operator::Neg),
                 Node::Value(Value::Natural(3)),
                 Node::Value(Value::Natural(4)),
-                Node::Exp(2, 3),
+                Node::Binary(2, Operator::Exp, 3),
                 Node::Value(Value::Natural(5)),
-                Node::Mul(4, 5),
-                Node::Add(1, 6),
+                Node::Binary(4, Operator::Mul, 5),
+                Node::Binary(1, Operator::Add, 6),
                 Node::Value(Value::Natural(6)),
-                Node::Sub(7, 8)
+                Node::Binary(7, Operator::Sub, 8)
             ]
         );
-        assert_eq!(root(&ast), Some(&Node::Sub(7, 8)));
+        assert_eq!(root(&ast), Some(&Node::Binary(7, Operator::Sub, 8)));
     }
 
     #[test]
@@ -305,7 +308,7 @@ mod test {
         ])
         .unwrap();
 
-        assert_eq!(root(&ast), Some(&Node::Neg(2)));
+        assert_eq!(root(&ast), Some(&Node::Unary(2, Operator::Neg)));
     }
 
     #[test]
@@ -323,9 +326,9 @@ mod test {
             vec![
                 Node::Value(Value::Natural(2)),
                 Node::Value(Value::Natural(3)),
-                Node::Add(0, 1),
+                Node::Binary(0, Operator::Add, 1),
                 Node::Value(Value::Natural(4)),
-                Node::Add(2, 3)
+                Node::Binary(2, Operator::Add, 3)
             ]
         );
     }
@@ -345,9 +348,9 @@ mod test {
             vec![
                 Node::Value(Value::Natural(3)),
                 Node::Value(Value::Natural(4)),
-                Node::Sub(0, 1),
+                Node::Binary(0, Operator::Sub, 1),
                 Node::Value(Value::Natural(5)),
-                Node::Add(2, 3)
+                Node::Binary(2, Operator::Add, 3)
             ]
         );
     }
@@ -365,7 +368,7 @@ mod test {
             vec![
                 Node::Value(Value::Roll(Roll::new(10, 8))),
                 Node::Value(Value::Natural(8)),
-                Node::Keep(0, 1)
+                Node::Binary(0, Operator::Keep, 1)
             ]
         );
     }
@@ -391,15 +394,15 @@ mod test {
             ast.exprs(),
             vec![
                 Node::Value(Value::Roll(Roll::new(1, 20))),
-                Node::Adv(0),
+                Node::Unary(0, Operator::Adv),
                 Node::Value(Value::Roll(Roll::new(1, 4))),
-                Node::DisAdv(2),
-                Node::Add(1, 3),
+                Node::Unary(2, Operator::DisAdv),
+                Node::Binary(1, Operator::Add, 3),
                 Node::Value(Value::Roll(Roll::new(10, 8))),
                 Node::Value(Value::Natural(8)),
-                Node::Keep(5, 6),
-                Node::Sort(7),
-                Node::Add(4, 8)
+                Node::Binary(5, Operator::Keep, 6),
+                Node::Unary(7, Operator::Sort),
+                Node::Binary(4, Operator::Add, 8)
             ]
         );
     }
@@ -411,11 +414,11 @@ mod test {
             vec![
                 Node::Value(Value::Natural(4)),
                 Node::Value(Value::Natural(3)),
-                Node::Add(0, 1),
+                Node::Binary(0, Operator::Add, 1),
                 Node::Value(Value::Natural(2)),
                 Node::Value(Value::Natural(5)),
-                Node::Mul(3, 4),
-                Node::Sub(2, 5),
+                Node::Binary(3, Operator::Mul, 4),
+                Node::Binary(2, Operator::Sub, 5),
             ],
         );
     }
@@ -427,10 +430,10 @@ mod test {
             vec![
                 Node::Value(Value::Natural(5)),
                 Node::Value(Value::Natural(3)),
-                Node::Exp(0, 1),
-                Node::Neg(2),
+                Node::Binary(0, Operator::Exp, 1),
+                Node::Unary(2, Operator::Neg),
                 Node::Value(Value::Natural(3)),
-                Node::Mul(3, 4),
+                Node::Binary(3, Operator::Mul, 4),
             ],
         );
     }
@@ -442,7 +445,7 @@ mod test {
             vec![
                 Node::Identifier("var".into()),
                 Node::Value(Value::Natural(3)),
-                Node::Add(0, 1),
+                Node::Binary(0, Operator::Add, 1),
             ],
         )
     }
@@ -455,8 +458,8 @@ mod test {
                 Node::Identifier("var1".into()),
                 Node::Identifier("var2".into()),
                 Node::Identifier("var3".into()),
-                Node::Exp(1, 2),
-                Node::Mul(0, 3),
+                Node::Binary(1, Operator::Exp, 2),
+                Node::Binary(0, Operator::Mul, 3),
             ],
         )
     }
@@ -469,8 +472,8 @@ mod test {
                 Node::Identifier("var".into()),
                 Node::Value(Value::Natural(2)),
                 Node::Value(Value::Natural(3)),
-                Node::Add(1, 2),
-                Node::Assign(0, 3),
+                Node::Binary(1, Operator::Add, 2),
+                Node::Binary(0, Operator::Assign, 3),
             ],
         )
     }
@@ -482,7 +485,7 @@ mod test {
             vec![
                 Node::Identifier("var".into()),
                 Node::Value(Value::Natural(0)),
-                Node::Assign(0, 1),
+                Node::Binary(0, Operator::Assign, 1),
             ],
         )
     }
@@ -496,9 +499,9 @@ mod test {
                 Node::Identifier("var".into()),
                 Node::Value(Value::Natural(1)),
                 Node::Value(Value::Natural(2)),
-                Node::Add(2, 3),
-                Node::Assign(1, 4),
-                Node::Assign(0, 5),
+                Node::Binary(2, Operator::Add, 3),
+                Node::Binary(1, Operator::Assign, 4),
+                Node::Binary(0, Operator::Assign, 5),
             ],
         )
     }
@@ -542,8 +545,8 @@ mod test {
                 Node::Value(Value::Natural(5)),
                 Node::Call("fn".into(), Vec::new()),
                 Node::Value(Value::Natural(2)),
-                Node::Mul(1, 2),
-                Node::Add(0, 3),
+                Node::Binary(1, Operator::Mul, 2),
+                Node::Binary(0, Operator::Add, 3),
             ],
         )
     }
@@ -558,10 +561,10 @@ mod test {
                 Node::Identifier("roll".into()),
                 Node::Call("dice".into(), vec![2]),
                 Node::Value(Value::Natural(1)),
-                Node::Add(3, 4),
+                Node::Binary(3, Operator::Add, 4),
                 Node::Value(Value::Natural(2)),
-                Node::Div(5, 6),
-                Node::Assign(1, 7),
+                Node::Binary(5, Operator::Div, 6),
+                Node::Binary(1, Operator::Assign, 7),
             ],
         )
     }
@@ -580,10 +583,10 @@ mod test {
                 Node::name("inb"),
                 Node::Value(Value::Natural(2)),
                 Node::Call("f2".into(), vec![6, 7]),
-                Node::Add(5, 8),
+                Node::Binary(5, Operator::Add, 8),
                 Node::Value(Value::Natural(2)),
-                Node::Mul(9, 10),
-                Node::Assign(2, 11),
+                Node::Binary(9, Operator::Mul, 10),
+                Node::Binary(2, Operator::Assign, 11),
             ],
         )
     }

@@ -1,5 +1,3 @@
-use crate::{ast::Node, err, Res};
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Operator {
     Sentinel,
@@ -68,19 +66,6 @@ impl Operator {
         }
     }
 
-    pub fn binary(self, lhs: usize, rhs: usize) -> Res<Node> {
-        match self {
-            Operator::Assign => Ok(Node::Assign(lhs, rhs)),
-            Operator::Add => Ok(Node::Add(lhs, rhs)),
-            Operator::Sub => Ok(Node::Sub(lhs, rhs)),
-            Operator::Mul => Ok(Node::Mul(lhs, rhs)),
-            Operator::Div => Ok(Node::Div(lhs, rhs)),
-            Operator::Exp => Ok(Node::Exp(lhs, rhs)),
-            Operator::Keep => Ok(Node::Keep(lhs, rhs)),
-            _ => err(format!("{self:?} is not a binary operator.")),
-        }
-    }
-
     pub fn is_unary(&self) -> bool {
         matches!(
             self,
@@ -90,16 +75,6 @@ impl Operator {
 
     pub fn is_unary_postfix(&self) -> bool {
         matches!(self, Operator::Adv | Operator::DisAdv | Operator::Sort)
-    }
-
-    pub fn unary(self, operand: usize) -> Res<Node> {
-        match self {
-            Operator::Neg => Ok(Node::Neg(operand)),
-            Operator::Adv => Ok(Node::Adv(operand)),
-            Operator::DisAdv => Ok(Node::DisAdv(operand)),
-            Operator::Sort => Ok(Node::Sort(operand)),
-            _ => err(format!("{self:?} is not a unary operator.")),
-        }
     }
 
     pub fn greater(left: &Self, right: &Self) -> bool {

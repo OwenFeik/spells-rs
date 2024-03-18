@@ -1,10 +1,6 @@
 use std::fmt::{Display, Write};
 
-use crate::{
-    roll::{Roll, RollOutcome},
-    value::Value,
-    Res,
-};
+use crate::{roll::RollOutcome, value::Value, Res};
 
 #[derive(Debug)]
 pub struct Outcome {
@@ -158,10 +154,6 @@ impl Outcome {
             value: Value::Values(values),
             rolls: this.rolls,
         })
-    }
-
-    pub fn roll(quantity: u32, die: u32) -> Self {
-        Self::new(Value::Roll(Roll::new(quantity, die)))
     }
 
     pub fn nat(value: i32) -> Self {
