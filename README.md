@@ -44,6 +44,7 @@ sixteen = 16
 * Integers. These are stored as `u32`. Rolls can be coerced to integers by
     evaluating them and taking a some of their outcomes.
 * Numbers. These are stored as `f64`. Integers can be coerced to numbers.
+* Strings.
 * Lists. These contain a collection of integers.
     * `[1, 2, 3, 4, 5]`
 * Evaluated rolls. These are a `(roll, list)` pair. They can be coerced to a

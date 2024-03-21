@@ -113,7 +113,7 @@ impl Context {
         }
     }
 
-    fn get_variable(&self, name: &str) -> Option<Value> {
+    pub fn get_variable(&self, name: &str) -> Option<Value> {
         self.scopes
             .iter()
             .rev()
@@ -122,7 +122,7 @@ impl Context {
             .flatten()
     }
 
-    fn set_variable<S: ToString>(&mut self, name: S, value: Value) {
+    pub fn set_variable<S: ToString>(&mut self, name: S, value: Value) {
         self.definition_scope()
             .variables
             .insert(name.to_string(), value);

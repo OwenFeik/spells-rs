@@ -1,3 +1,4 @@
+#![feature(fs_try_exists)]
 #![feature(let_chains)]
 
 mod ast;
@@ -49,7 +50,7 @@ fn main() {
                 }
             }
             Err(input::InputError::Eof) => {
-                if let Err(e) = load::save(&context) {
+                if let Err(e) = load::save(&mut context) {
                     println!("{e}");
                 }
                 break;
