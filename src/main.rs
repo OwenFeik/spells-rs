@@ -1,8 +1,10 @@
 #![feature(fs_try_exists)]
 #![feature(let_chains)]
+#![feature(split_at_checked)]
 
 mod ast;
 mod builtins;
+mod commands;
 mod eval;
 mod input;
 mod load;
@@ -27,20 +29,28 @@ fn eval(input: &str, context: &mut eval::Context) -> Res<outcome::Outcome> {
     eval::eval_roll(&parse(input)?, context)
 }
 
+fn interpret(input: &str, context: &mut eval::Context) {
+    match eval(input, context) {
+        Ok(outcome) => println!("{outcome}"),
+        Err(e) => println!("{e}"),
+    }
+}
+
 fn main() {
     let mut input = input::Input::new();
     let mut context = eval::Context::new();
-    if let Err(e) = load::load(&mut context) {
-        println!("{e}");
-    }
-
     let mut interrupted = false;
     loop {
         match input.line() {
-            Ok(text) => match eval(&text, &mut context) {
-                Ok(outcome) => println!("{outcome}"),
-                Err(e) => println!("{e}"),
-            },
+            Ok(text) => {
+                if text.starts_with('.') {
+                    if let Err(e) = commands::handle(&text) {
+                        println!("{e}");
+                    }
+                } else {
+                    interpret(&text, &mut context);
+                }
+            }
             Err(input::InputError::Interrupt) => {
                 if interrupted {
                     std::process::exit(0);
@@ -50,10 +60,7 @@ fn main() {
                 }
             }
             Err(input::InputError::Eof) => {
-                if let Err(e) = load::save(&mut context) {
-                    println!("{e}");
-                }
-                break;
+                commands::exit(&[]).ok();
             }
             Err(input::InputError::Other(e)) => println!("Input error: {e}"),
         }
