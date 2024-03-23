@@ -159,6 +159,14 @@ impl Outcome {
     pub fn nat(value: i32) -> Self {
         Self::new(Value::Natural(value))
     }
+
+    pub fn resolved(self) -> Res<Self> {
+        if matches!(self.value, Value::Roll(_)) {
+            self.natural().map(|oc| oc.0)
+        } else {
+            Ok(self)
+        }
+    }
 }
 
 impl Display for Outcome {

@@ -1,189 +1,9 @@
-use std::{collections::HashMap, fmt::Display, rc::Rc, sync::atomic::AtomicUsize};
-
-use crate::{
-    builtins::{self, DEFAULT_GLOBALS},
-    err,
-    operator::Operator,
-    outcome::Outcome,
-    parse, Res,
-};
+use crate::{context::Context, err, operator::Operator, outcome::Outcome, Res};
 
 use super::{
     ast::{Ast, Node},
     value::Value,
 };
-
-struct Function {
-    name: String,
-    body: Ast,
-    parameters: Vec<String>,
-
-    /// Unique ID of this function. This keeps track of declaration order, which
-    /// is important because when we are saving defined functions, we need to
-    /// ensure that all functions used within a function are available in the
-    /// scope the function is evaluated in.
-    id: usize,
-}
-
-impl Function {
-    fn new<S: ToString>(name: S, body: Ast, parameters: Vec<String>) -> Self {
-        static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
-        Self {
-            name: name.to_string(),
-            body,
-            parameters,
-            id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-        }
-    }
-}
-
-impl Display for Function {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}({}) = {}",
-            &self.name,
-            self.parameters.join(", "),
-            self.body.render()
-        )
-    }
-}
-
-struct Scope {
-    variables: HashMap<String, Value>,
-    functions: HashMap<String, Rc<Function>>,
-}
-
-impl Scope {
-    fn new() -> Self {
-        Self {
-            variables: HashMap::new(),
-            functions: HashMap::new(),
-        }
-    }
-}
-
-pub struct Context {
-    scopes: Vec<Scope>,
-    initialised: bool,
-}
-
-impl Context {
-    const GLOBAL_SCOPE_INDEX: usize = 0;
-    const USER_SCOPE_INDEX: usize = 1;
-
-    pub fn new() -> Self {
-        let mut context = Self {
-            scopes: vec![Scope::new(), Scope::new()],
-            initialised: false,
-        };
-
-        // Add default globals by evaluating them.
-        for definition in DEFAULT_GLOBALS {
-            if let Err(e) = context.eval(&definition) {
-                panic!(
-                    "Failed to evaluate global: {} Definition: {}",
-                    e, definition
-                );
-            };
-        }
-
-        context.initialised = true;
-        context
-    }
-
-    fn definition_scope(&mut self) -> &mut Scope {
-        let index = if self.initialised {
-            Self::USER_SCOPE_INDEX
-        } else {
-            Self::GLOBAL_SCOPE_INDEX
-        };
-        self.scopes.get_mut(index).expect("Permanent scope popped.")
-    }
-
-    fn push_scope(&mut self) -> &mut Scope {
-        self.scopes.push(Scope::new());
-        self.scopes.last_mut().unwrap()
-    }
-
-    fn pop_scope(&mut self) {
-        // Never pop user or global scope.
-        if self.scopes.len() > 2 {
-            self.scopes.pop();
-        }
-    }
-
-    pub fn get_variable(&self, name: &str) -> Option<Value> {
-        self.scopes
-            .iter()
-            .rev()
-            .map(|scope| scope.variables.get(name).cloned())
-            .find(Option::is_some)
-            .flatten()
-    }
-
-    pub fn set_variable<S: ToString>(&mut self, name: S, value: Value) {
-        self.definition_scope()
-            .variables
-            .insert(name.to_string(), value);
-    }
-
-    fn get_function(&self, name: &str) -> Option<Rc<Function>> {
-        self.scopes
-            .iter()
-            .rev()
-            .map(|scope| scope.functions.get(name).cloned())
-            .find(Option::is_some)
-            .flatten()
-    }
-
-    fn define_function(&mut self, function: Function) {
-        self.definition_scope()
-            .functions
-            .insert(function.name.clone(), Rc::new(function));
-    }
-
-    fn call(&mut self, name: &str, args: Vec<Value>) -> Res<Outcome> {
-        if let Some(function) = self.get_function(name) {
-            let scope = self.push_scope();
-            check_argument_count(name, function.parameters.len(), &args)?;
-            for (name, value) in function.parameters.iter().zip(args) {
-                scope.variables.insert(name.clone(), value);
-            }
-            let ret = evaluate(&function.body, self, function.body.start());
-            self.pop_scope();
-            ret
-        } else {
-            builtins::call(name, &args)
-        }
-    }
-
-    pub fn eval(&mut self, statement: &str) -> Res<()> {
-        let ast = parse(statement)?;
-        evaluate(&ast, self, ast.start()).map(|_| ())
-    }
-
-    pub fn dump_to_string(&self) -> String {
-        let mut ret = String::new();
-
-        let user_scope = self
-            .scopes
-            .get(Self::USER_SCOPE_INDEX)
-            .expect("User scope popped.");
-
-        // Sort functions by definition order.
-        let mut functions: Vec<&Rc<Function>> = user_scope.functions.values().collect();
-        functions.sort_by(|a, b| (a.id).cmp(&b.id));
-        for func in functions {
-            ret += &format!("{func}\n");
-        }
-
-        for (k, v) in &user_scope.variables {
-            ret += &format!("{k} = {v}\n");
-        }
-        ret
-    }
-}
 
 pub fn check_argument_count(name: &str, count: usize, args: &[Value]) -> Res<()> {
     if count != args.len() {
@@ -214,14 +34,14 @@ fn define(
         return err("Failed to get subtree for definition.");
     };
 
-    context.define_function(Function::new(name, body, parameters));
+    context.define_function(name, body, parameters);
     Ok(Outcome::new(Value::Empty))
 }
 
 fn assign(ast: &Ast, context: &mut Context, destination: usize, definition: usize) -> Res<Outcome> {
     match ast.get(destination) {
         Some(Node::Identifier(name)) => {
-            let value = evaluate(ast, context, definition)?.value;
+            let value = evaluate_node(ast, context, definition)?.value;
             context.set_variable(name, value.clone());
             Ok(Outcome::new(value))
         }
@@ -233,7 +53,7 @@ fn assign(ast: &Ast, context: &mut Context, destination: usize, definition: usiz
 fn call(ast: &Ast, context: &mut Context, name: &str, args: &[usize]) -> Res<Outcome> {
     let mut arg_values = Vec::new();
     for arg in args {
-        arg_values.push(evaluate(ast, context, *arg)?.value);
+        arg_values.push(evaluate_node(ast, context, *arg)?.value);
     }
     context.call(name, arg_values)
 }
@@ -257,8 +77,8 @@ fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize
     if matches!(op, Operator::Assign) {
         assign(ast, context, lhs, rhs)
     } else {
-        let lhs_val = evaluate(ast, context, lhs)?;
-        let rhs_val = evaluate(ast, context, rhs)?;
+        let lhs_val = evaluate_node(ast, context, lhs)?;
+        let rhs_val = evaluate_node(ast, context, rhs)?;
         match op {
             Operator::Assign => err("Operator::Asssign doesn't match Operator::Assign."),
             Operator::Add => lhs_val.add(rhs_val),
@@ -277,7 +97,7 @@ fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize
 }
 
 fn unary(ast: &Ast, context: &mut Context, op: Operator, arg: usize) -> Res<Outcome> {
-    let val = evaluate(ast, context, arg)?;
+    let val = evaluate_node(ast, context, arg)?;
     match op {
         Operator::Neg => val.neg(),
         Operator::Adv => val.adv(),
@@ -287,7 +107,7 @@ fn unary(ast: &Ast, context: &mut Context, op: Operator, arg: usize) -> Res<Outc
     }
 }
 
-fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
+fn evaluate_node(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
     if let Some(expr) = ast.get(index) {
         match expr {
             &Node::Binary(lhs, op, rhs) => binary(ast, context, op, lhs, rhs),
@@ -301,18 +121,14 @@ fn evaluate(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
     }
 }
 
-pub fn eval_roll(ast: &Ast, context: &mut Context) -> Res<Outcome> {
-    let outcome = evaluate(ast, context, ast.start())?;
-    if matches!(outcome.value, Value::Roll(_)) {
-        outcome.natural().map(|oc| oc.0)
-    } else {
-        Ok(outcome)
-    }
+pub fn evaluate(ast: &Ast, context: &mut Context) -> Res<Outcome> {
+    evaluate_node(ast, context, ast.start())
 }
 
 #[cfg(test)]
 mod test {
     use crate::{
+        context::Context,
         parser::parse,
         roll::{Roll, RollOutcome},
         token::tokenise,
@@ -325,7 +141,7 @@ mod test {
     }
 
     fn eval_value(ast: Ast) -> Value {
-        evaluate(&ast, &mut Context::new(), ast.start())
+        evaluate_node(&ast, &mut Context::empty(), ast.start())
             .unwrap()
             .value
     }
@@ -368,7 +184,10 @@ mod test {
 
     #[test]
     fn test_rolls() {
-        let result = eval_roll(&ast_of("4d6k3 + 2d4 + d20d + 2d10a"), &mut Context::new()).unwrap();
+        let result = evaluate(&ast_of("4d6k3 + 2d4 + d20d + 2d10a"), &mut Context::empty())
+            .unwrap()
+            .resolved()
+            .unwrap();
         let rolls: Vec<Roll> = result.rolls.into_iter().map(|oc| oc.roll).collect();
         assert_eq!(
             rolls,
@@ -423,14 +242,17 @@ mod test {
     #[test]
     fn test_sort_outcomes() {
         let ast = ast_of("8d8s");
-        assert_eq!(eval_roll(&ast, &mut Context::new()).unwrap().rolls.len(), 1);
+        assert_eq!(
+            evaluate(&ast, &mut Context::empty()).unwrap().rolls.len(),
+            1
+        );
     }
 
     #[test]
     fn test_eval() {
         let ast = ast_of("2 + 3 - 4 * 5");
         assert_eq!(
-            eval_roll(&ast, &mut Context::new())
+            evaluate(&ast, &mut Context::empty())
                 .unwrap()
                 .value
                 .decimal()
@@ -441,20 +263,12 @@ mod test {
 
     #[test]
     fn test_assignment() {
-        let mut context = Context::new();
+        let mut context = Context::empty();
         let ast = ast_of("var = 2 + 3 - 1");
-        evaluate(&ast, &mut context, ast.start()).unwrap();
+        evaluate_node(&ast, &mut context, ast.start()).unwrap();
         assert_eq!(
             context.get_variable("var").unwrap().natural().unwrap(),
             2 + 3 - 1
         );
-    }
-
-    #[test]
-    fn test_definition() {
-        let mut context = Context::new();
-        let ast = ast_of("func(x, y) := x + y");
-        evaluate(&ast, &mut context, ast.start()).unwrap();
-        assert_eq!(context.get_function("func").unwrap().body.render(), "x + y");
     }
 }

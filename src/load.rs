@@ -1,10 +1,9 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use crate::{err, eval::Context, Res};
+use crate::{context::Context, err, Res};
 
 const DEFAULT_SAVE_NAME: &str = "untitled";
 const SAVE_EXTENSION: &str = ".tome";
-const SAVE_NAME_VARIABLE: &str = "SAVE_NAME";
 
 fn get_env_path(var: &str) -> Res<PathBuf> {
     let Some(val) = std::env::var_os(var) else {
@@ -67,18 +66,28 @@ fn save_file(title: Option<String>) -> Res<PathBuf> {
     Ok(save_path)
 }
 
+fn file_name(path: &Path) -> Res<String> {
+    if let Some(name) = path.file_stem().map(|s| s.to_string_lossy().to_string()) {
+        Ok(name)
+    } else {
+        Err(format!("Failed to find filename of {}", path.display()))
+    }
+}
+
 pub fn load<S: ToString>(title: S) -> Res<Context> {
     let path = save_file(Some(title.to_string()))?;
     let text = std::fs::read_to_string(&path)
         .map_err(|e| format!("Error loading from {}: {e}", path.display()))?;
-    let mut context = Context::new();
+    let mut context = Context::empty();
     for statement in text.lines() {
         context.eval(statement)?;
     }
+
+    println!("Loaded {}", path.display());
     Ok(context)
 }
 
-pub fn save(title: Option<String>, context: &Context) -> Res<()> {
+pub fn save(title: Option<String>, context: &Context) -> Res<String> {
     let path = save_file(title)?;
 
     if let Some(dir) = path.parent() {
@@ -87,4 +96,8 @@ pub fn save(title: Option<String>, context: &Context) -> Res<()> {
 
     std::fs::write(&path, context.dump_to_string())
         .map_err(|e| format!("Error saving at {}: {e}", path.display()))
+        .map_err(|e| e.to_string())?;
+
+    println!("Saved to {}", path.display());
+    file_name(&path)
 }

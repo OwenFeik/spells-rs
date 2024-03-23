@@ -54,13 +54,6 @@ impl Value {
         }
     }
 
-    pub fn string(self) -> Res<String> {
-        match self {
-            Self::String(s) => Ok(s),
-            _ => err(format!("{:?} cannot be interpreted as a string.", self))
-        }
-    }
-
     pub fn roll(self) -> Res<Roll> {
         match self {
             Value::Roll(roll) => Ok(roll),
@@ -125,11 +118,28 @@ impl Display for Value {
                         .iter()
                         .map(u32::to_string)
                         .collect::<Vec<String>>()
-                        .join(", ")
+                        .join(", "),
                 )
             }
-            Value::String(s) => write!(f, r#""{s}""#),
+            Value::String(s) => write!(f, r#""{}""#, s.replace('"', "\\\"")),
             Value::Empty => write!(f, "()"),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::context::Context;
+
+    use super::*;
+
+    #[test]
+    fn test_quotes_escaped() {
+        let mut context = Context::empty();
+        let value = Value::String("\"quoted\"".into());
+        assert_eq!(
+            crate::eval(&value.to_string(), &mut context).unwrap().value,
+            value
+        );
     }
 }

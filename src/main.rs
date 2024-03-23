@@ -5,6 +5,7 @@
 mod ast;
 mod builtins;
 mod commands;
+mod context;
 mod eval;
 mod input;
 mod load;
@@ -17,6 +18,13 @@ mod value;
 
 type Res<T> = Result<T, String>;
 
+struct AppState {
+    input: input::Input,
+    context: context::Context,
+    interrupted: bool,
+    title: Option<String>,
+}
+
 fn err<T, S: ToString>(msg: S) -> Res<T> {
     Err(msg.to_string())
 }
@@ -25,11 +33,11 @@ fn parse(input: &str) -> Res<ast::Ast> {
     parser::parse(&token::tokenise(input)?)
 }
 
-fn eval(input: &str, context: &mut eval::Context) -> Res<outcome::Outcome> {
-    eval::eval_roll(&parse(input)?, context)
+fn eval(input: &str, context: &mut context::Context) -> Res<outcome::Outcome> {
+    eval::evaluate(&parse(input)?, context).and_then(|oc| oc.resolved())
 }
 
-fn interpret(input: &str, context: &mut eval::Context) {
+fn interpret(input: &str, context: &mut context::Context) {
     match eval(input, context) {
         Ok(outcome) => println!("{outcome}"),
         Err(e) => println!("{e}"),
@@ -37,30 +45,34 @@ fn interpret(input: &str, context: &mut eval::Context) {
 }
 
 fn main() {
-    let mut input = input::Input::new();
-    let mut context = eval::Context::new();
-    let mut interrupted = false;
+    let mut state = AppState {
+        input: input::Input::new(),
+        context: context::Context::default(),
+        interrupted: false,
+        title: None,
+    };
+
     loop {
-        match input.line() {
+        match state.input.line() {
             Ok(text) => {
                 if text.starts_with('.') {
-                    if let Err(e) = commands::handle(&text) {
+                    if let Err(e) = commands::handle(&text, &mut state) {
                         println!("{e}");
                     }
                 } else {
-                    interpret(&text, &mut context);
+                    interpret(&text, &mut state.context);
                 }
             }
             Err(input::InputError::Interrupt) => {
-                if interrupted {
+                if state.interrupted {
                     std::process::exit(0);
                 } else {
-                    interrupted = true;
+                    state.interrupted = true;
                     println!("Ctrl-C again to exit gracelessly.")
                 }
             }
             Err(input::InputError::Eof) => {
-                commands::exit(&[]).ok();
+                commands::exit(&[], &mut state).ok();
             }
             Err(input::InputError::Other(e)) => println!("Input error: {e}"),
         }
