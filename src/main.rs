@@ -22,8 +22,10 @@ struct AppState {
     input: input::Input,
     context: context::Context,
     interrupted: bool,
-    title: Option<String>,
+    cache: context::Context,
 }
+
+const CACHE_TITLE: &str = "_cache";
 
 fn err<T, S: ToString>(msg: S) -> Res<T> {
     Err(msg.to_string())
@@ -44,13 +46,33 @@ fn interpret(input: &str, context: &mut context::Context) {
     }
 }
 
+fn load_cache(state: &mut AppState) -> Res<()> {
+    if let Ok((cache, _)) = load::load(load::SaveTarget::Title(CACHE_TITLE.into())) {
+        if let Err(e) = state.cache.load_from(cache) {
+            return Err(format!("Error loading cache: {e}"));
+        }
+    }
+
+    if let Some(val) = state.cache.get_variable(load::SAVE_PATH_VAR) {
+        if let Err(e) = commands::load(&[], state) {
+            return Err(format!("Error loading {val}: {e}"));
+        }
+    }
+
+    Ok(())
+}
+
 fn main() {
     let mut state = AppState {
         input: input::Input::new(),
         context: context::Context::default(),
         interrupted: false,
-        title: None,
+        cache: context::Context::empty(),
     };
+
+    if let Err(e) = load_cache(&mut state) {
+        println!("{e}");
+    }
 
     loop {
         match state.input.line() {

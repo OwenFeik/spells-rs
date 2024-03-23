@@ -1,9 +1,30 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::{context::Context, err, Res};
 
+pub const SAVE_PATH_VAR: &str = "SAVE_PATH";
 const DEFAULT_SAVE_NAME: &str = "untitled";
 const SAVE_EXTENSION: &str = ".tome";
+
+pub enum SaveTarget {
+    Generate,
+    Title(String),
+    Path(PathBuf),
+}
+
+impl SaveTarget {
+    pub fn from<S: ToString>(target: S) -> Self {
+        let string = target.to_string();
+        if string.contains('.')
+            || string.contains('/')
+            || string.contains(std::path::MAIN_SEPARATOR)
+        {
+            SaveTarget::Path(PathBuf::from(string))
+        } else {
+            SaveTarget::Title(string)
+        }
+    }
+}
 
 fn get_env_path(var: &str) -> Res<PathBuf> {
     let Some(val) = std::env::var_os(var) else {
@@ -66,16 +87,16 @@ fn save_file(title: Option<String>) -> Res<PathBuf> {
     Ok(save_path)
 }
 
-fn file_name(path: &Path) -> Res<String> {
-    if let Some(name) = path.file_stem().map(|s| s.to_string_lossy().to_string()) {
-        Ok(name)
-    } else {
-        Err(format!("Failed to find filename of {}", path.display()))
+fn normalise_to_path(target: SaveTarget) -> Res<PathBuf> {
+    match target {
+        SaveTarget::Generate => save_file(None),
+        SaveTarget::Title(title) => save_file(Some(title)),
+        SaveTarget::Path(path) => Ok(path),
     }
 }
 
-pub fn load<S: ToString>(title: S) -> Res<Context> {
-    let path = save_file(Some(title.to_string()))?;
+pub fn load(at: SaveTarget) -> Res<(Context, String)> {
+    let path = normalise_to_path(at)?;
     let text = std::fs::read_to_string(&path)
         .map_err(|e| format!("Error loading from {}: {e}", path.display()))?;
     let mut context = Context::empty();
@@ -83,21 +104,19 @@ pub fn load<S: ToString>(title: S) -> Res<Context> {
         context.eval(statement)?;
     }
 
-    println!("Loaded {}", path.display());
-    Ok(context)
+    Ok((context, path.display().to_string()))
 }
 
-pub fn save(title: Option<String>, context: &Context) -> Res<String> {
-    let path = save_file(title)?;
+pub fn save(at: SaveTarget, context: &Context) -> Res<String> {
+    let path = normalise_to_path(at)?;
 
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).ok();
     }
 
-    std::fs::write(&path, context.dump_to_string())
+    std::fs::write(&path, context.dump_to_string()?)
         .map_err(|e| format!("Error saving at {}: {e}", path.display()))
         .map_err(|e| e.to_string())?;
 
-    println!("Saved to {}", path.display());
-    file_name(&path)
+    Ok(path.display().to_string())
 }

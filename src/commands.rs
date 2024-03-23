@@ -1,4 +1,9 @@
-use crate::{err, AppState, Res};
+use crate::{
+    err,
+    load::{self, SaveTarget},
+    value::Value,
+    AppState, Res, CACHE_TITLE,
+};
 
 const COMMANDS: &[(&str, &'static dyn Fn(&[String], &mut AppState) -> Res<()>)] =
     &[("exit", &exit), ("save", &save), ("load", &load)];
@@ -28,34 +33,47 @@ pub fn exit(args: &[String], state: &mut AppState) -> Res<()> {
         save(&[], state)?;
     }
 
+    load::save(load::SaveTarget::Title(CACHE_TITLE.into()), &state.cache).ok();
     std::process::exit(0);
 }
 
-fn save(args: &[String], state: &mut AppState) -> Res<()> {
-    let title = if let Some(arg) = single_opt_arg(args)? {
-        Some(arg.to_string())
+fn save_target(args: &[String], state: &AppState) -> Res<SaveTarget> {
+    if let Some(arg) = single_opt_arg(args)? {
+        Ok(SaveTarget::from(arg.to_string()))
+    } else if let Some(path) = state.cache.get_variable(load::SAVE_PATH_VAR) {
+        Ok(SaveTarget::from(path.string()?))
     } else {
-        state.title.clone()
-    };
-    state.title = Some(crate::load::save(title, &state.context)?);
+        Ok(SaveTarget::Generate)
+    }
+}
+
+fn save(args: &[String], state: &mut AppState) -> Res<()> {
+    let path = load::save(save_target(args, state)?, &state.context)?;
+    println!("Saved to {path}");
+    state
+        .cache
+        .set_variable(load::SAVE_PATH_VAR, Value::String(path));
     Ok(())
 }
 
-fn load(args: &[String], state: &mut AppState) -> Res<()> {
-    let title = if let Some(arg) = single_opt_arg(args)? {
-        arg.to_string()
-    } else if let Some(title) = &state.title {
-        title.clone()
-    } else {
-        state
-            .input
-            .prompt("Save title")
-            .map_err(|e| e.to_string())?
-    };
+pub fn load(args: &[String], state: &mut AppState) -> Res<()> {
+    let mut target = save_target(args, state)?;
+    if matches!(target, SaveTarget::Generate) {
+        target = SaveTarget::from(
+            state
+                .input
+                .prompt("Title or path:")
+                .map_err(|e| e.to_string())?,
+        );
+    }
 
-    state.context = crate::load::load(&title)?;
-    state.title = Some(title);
-    Ok(())
+    let (loaded, path) = load::load(target)?;
+    println!("Loaded {path}");
+    state
+        .cache
+        .set_variable(load::SAVE_PATH_VAR, Value::String(path));
+
+    state.context.load_from(loaded)
 }
 
 fn parse_command(input: &str) -> Res<(String, Vec<String>)> {

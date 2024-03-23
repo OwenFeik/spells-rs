@@ -220,22 +220,22 @@ mod test {
                     advantage: false,
                     disadvantage: false,
                 },
-                values: vec![1, 2, 3, 4, 5, 6, 7, 8],
+                rolls: vec![1, 2, 3, 4, 5, 6, 7, 8],
                 result: 36,
             }),
             rolls: Vec::new(),
         };
-        let values = expr.keep(Outcome::nat(6)).unwrap().value.values().unwrap();
+        let values = expr.keep(Outcome::nat(6)).unwrap().value.rolls().unwrap();
         assert_eq!(values, vec![3, 4, 5, 6, 7, 8]);
     }
 
     #[test]
     fn test_sort() {
         let expr = Outcome {
-            value: Value::Values(vec![3, 4, 1, 7]),
+            value: Value::Rolls(vec![3, 4, 1, 7]),
             rolls: Vec::new(),
         };
-        let values = expr.sort().unwrap().value.values().unwrap();
+        let values = expr.sort().unwrap().value.rolls().unwrap();
         assert_eq!(values, vec![1, 3, 4, 7]);
     }
 

@@ -3,6 +3,7 @@ use std::{collections::HashMap, fmt::Display, rc::Rc, sync::atomic::AtomicUsize}
 use crate::{
     ast::Ast,
     builtins::DEFAULT_GLOBALS,
+    err,
     eval::{check_argument_count, evaluate},
     outcome::Outcome,
     parse,
@@ -172,13 +173,12 @@ impl Context {
         Ok(())
     }
 
-    pub fn dump_to_string(&self) -> String {
+    pub fn dump_to_string(&self) -> Res<String> {
         let mut ret = String::new();
 
-        let user_scope = self
-            .scopes
-            .get(Self::USER_SCOPE_INDEX)
-            .expect("User scope popped.");
+        let Some(user_scope) = self.scopes.last() else {
+            return err("No scope available to dump to string.");
+        };
 
         // Sort functions by definition order.
         let mut functions: Vec<&Rc<Function>> = user_scope.functions.values().collect();
@@ -190,7 +190,17 @@ impl Context {
         for (k, v) in &user_scope.variables {
             ret += &format!("{k} = {v}\n");
         }
-        ret
+        Ok(ret)
+    }
+
+    pub fn load_from(&mut self, from: Context) -> Res<()> {
+        let mut scopes = from.scopes;
+        if !scopes.is_empty() {
+            *self.definition_scope() = scopes.swap_remove(scopes.len() - 1);
+            Ok(())
+        } else {
+            err("Unable to load from empty context.")
+        }
     }
 }
 

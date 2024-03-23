@@ -12,7 +12,8 @@ pub enum Value {
     Natural(i32),
     Outcome(RollOutcome),
     Roll(Roll),
-    Values(Vec<u32>),
+    Rolls(Vec<u32>),
+    List(Vec<Value>),
     String(String),
     Empty,
 }
@@ -22,9 +23,16 @@ impl Value {
         match self {
             Self::Decimal(v) => Ok(v),
             Self::Natural(v) => Ok(v as f32),
-            Self::Roll(..) => Self::Values(self.values()?).decimal(),
+            Self::Roll(..) => Self::Rolls(self.rolls()?).decimal(),
+            Self::Rolls(rolls) => Ok(rolls.iter().sum::<u32>() as f32),
             Self::Outcome(outcome) => Ok(outcome.result as f32),
-            Self::Values(_) => Ok(self.natural()? as f32),
+            Self::List(values) => {
+                let mut total = 0.0;
+                for value in values {
+                    total += value.decimal()?;
+                }
+                Ok(total)
+            }
             Self::String(_) => err("String cannot be interpreted as decimal."),
             Self::Empty => err("Empty cannot be interpreted as decimal."),
         }
@@ -36,21 +44,29 @@ impl Value {
             Self::Natural(v) => Ok(v),
             Self::Outcome(outcome) => Ok(outcome.result as i32),
             Self::Roll(_) => Ok(self.outcome()?.result as i32),
-            Self::Values(values) => Ok(values.iter().sum::<u32>() as i32),
+            Self::Rolls(rolls) => Ok(rolls.iter().sum::<u32>() as i32),
+            Self::List(values) => {
+                let mut total = 0;
+                for value in values {
+                    total += value.natural()?;
+                }
+                Ok(total)
+            }
             Self::String(_) => err("String cannot be interpreted as natural."),
             Self::Empty => err("Empty cannot be interpreted as natural."),
         }
     }
 
-    pub fn values(self) -> Res<Vec<u32>> {
+    pub fn rolls(self) -> Res<Vec<u32>> {
         match self {
-            Self::Decimal(_) => err("Decimal value cannot be interpreted as values."),
-            Self::Natural(_) => err("Natural value cannot be interpreted as values."),
-            Self::Roll(..) => Ok(self.outcome()?.values),
-            Self::Outcome(outcome) => Ok(outcome.values),
-            Self::Values(values) => Ok(values),
-            Self::String(_) => err("String cannot be interpreted as values."),
-            Self::Empty => err("Empty cannot be interpreted as values."),
+            Self::Decimal(_) => err("Decimal value cannot be interpreted as rolls."),
+            Self::Natural(_) => err("Natural value cannot be interpreted as rolls."),
+            Self::Roll(..) => Value::Outcome(self.outcome()?).rolls(),
+            Self::Rolls(rolls) => Ok(rolls),
+            Self::Outcome(outcome) => Ok(outcome.rolls),
+            Self::List(_) => err("List cannot be interpreted as rolls."),
+            Self::String(_) => err("String cannot be interpreted as rolls."),
+            Self::Empty => err("Empty cannot be interpreted as rolls."),
         }
     }
 
@@ -97,9 +113,16 @@ impl Value {
 
         Ok(RollOutcome {
             roll,
-            values,
+            rolls: values,
             result,
         })
+    }
+
+    pub fn string(self) -> Res<String> {
+        match self {
+            Value::String(string) => Ok(string),
+            _ => Err(format!("{self} cannot be interpreted as a string.")),
+        }
     }
 }
 
@@ -110,16 +133,27 @@ impl Display for Value {
             Value::Natural(v) => write!(f, "{v}"),
             Value::Outcome(v) => write!(f, "{}", v.result),
             Value::Roll(v) => write!(f, "{v}"),
-            Value::Values(values) => {
+            Value::Rolls(rolls) => {
                 write!(
                     f,
                     "[{}]",
-                    values
+                    rolls
                         .iter()
-                        .map(u32::to_string)
+                        .map(|r| r.to_string())
                         .collect::<Vec<String>>()
-                        .join(", "),
+                        .join(", ")
                 )
+            }
+            Value::List(values) => {
+                write!(f, "[")?;
+                let len = values.len();
+                for (i, value) in values.iter().enumerate() {
+                    write!(f, "{value}")?;
+                    if i < len {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "]")
             }
             Value::String(s) => write!(f, r#""{}""#, s.replace('"', "\\\"")),
             Value::Empty => write!(f, "()"),

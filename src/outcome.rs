@@ -28,12 +28,12 @@ impl Outcome {
         Ok((self, outcome))
     }
 
-    pub fn values(self) -> Res<(Self, Vec<u32>)> {
+    pub fn rolls(self) -> Res<(Self, Vec<u32>)> {
         if matches!(self.value, Value::Roll(_)) {
             let (val, outcome) = self.outcome()?;
-            Ok((val, Value::Outcome(outcome).values()?))
+            Ok((val, Value::Outcome(outcome).rolls()?))
         } else {
-            let values = self.value.clone().values()?;
+            let values = self.value.clone().rolls()?;
             Ok((self, values))
         }
     }
@@ -115,16 +115,16 @@ impl Outcome {
     }
 
     pub fn sort(self) -> Res<Self> {
-        let (this, mut values) = self.values()?;
+        let (this, mut values) = self.rolls()?;
         values.sort();
         Ok(Self {
-            value: Value::Values(values),
+            value: Value::Rolls(values),
             rolls: this.rolls,
         })
     }
 
     pub fn keep(self, rhs: Self) -> Res<Self> {
-        let (mut this, mut values) = self.values()?;
+        let (mut this, mut values) = self.rolls()?;
         let (mut that, keep) = rhs.natural()?;
         this.rolls.append(&mut that.rolls);
 
@@ -151,7 +151,7 @@ impl Outcome {
         }
 
         Ok(Self {
-            value: Value::Values(values),
+            value: Value::Rolls(values),
             rolls: this.rolls,
         })
     }

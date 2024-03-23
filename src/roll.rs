@@ -44,7 +44,7 @@ impl Display for Roll {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RollOutcome {
     pub roll: Roll,
-    pub values: Vec<u32>,
+    pub rolls: Vec<u32>,
     pub result: u32,
 }
 
@@ -54,7 +54,7 @@ impl Display for RollOutcome {
             f,
             "{}\tRolls: \t{}\tTotal: {}",
             self.roll,
-            self.values
+            self.rolls
                 .iter()
                 .map(u32::to_string)
                 .collect::<Vec<String>>()
