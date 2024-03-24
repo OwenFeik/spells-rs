@@ -88,7 +88,7 @@ impl Context {
 
         // Add default globals by evaluating them.
         for definition in DEFAULT_GLOBALS {
-            if let Err(e) = self.eval(&definition) {
+            if let Err(e) = self.eval(definition) {
                 panic!(
                     "Failed to evaluate global: {} Definition: {}",
                     e, definition

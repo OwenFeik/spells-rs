@@ -13,6 +13,8 @@ struct Parser<'a> {
     input: &'a [Token],
     operators: Vec<Operator>,
     operands: Vec<usize>,
+    operators_scopes: Vec<Vec<Operator>>,
+    operands_scopes: Vec<Vec<usize>>,
     ast: Ast,
 }
 
@@ -22,7 +24,27 @@ impl<'a> Parser<'a> {
             input,
             operators: Vec::new(),
             operands: Vec::new(),
+            operators_scopes: Vec::new(),
+            operands_scopes: Vec::new(),
             ast: Ast::new(),
+        }
+    }
+
+    fn push_scope(&mut self) {
+        let operators = std::mem::take(&mut self.operators);
+        let operands = std::mem::take(&mut self.operands);
+
+        self.operators_scopes.push(operators);
+        self.operands_scopes.push(operands);
+    }
+
+    fn pop_scope(&mut self) {
+        if let Some(ops) = self.operators_scopes.pop() {
+            self.operators = ops;
+        }
+
+        if let Some(ops) = self.operands_scopes.pop() {
+            self.operands = ops;
         }
     }
 
@@ -79,7 +101,7 @@ impl<'a> Parser<'a> {
                 Ok(id)
             }
             Token::ParenClose => err(") unexpected."),
-            Token::BracketOpen => todo!("parse list"),
+            Token::BracketOpen => self.list(),
             Token::BracketClose => err("] unexpected."),
             Token::Comma => err(", unexpected."),
             Token::Operator(Operator::Sub) | Token::Operator(Operator::Neg) => {
@@ -100,6 +122,29 @@ impl<'a> Parser<'a> {
         Ok(id)
     }
 
+    fn _list(&mut self) -> Res<usize> {
+        let mut values = Vec::new();
+        if !matches!(self.peek(), Some(Token::BracketClose)) {
+            values.push(self.expr()?);
+            while matches!(self.peek(), Some(Token::Comma)) {
+                self.expect(Token::Comma)?;
+                values.push(self.expr()?);
+            }
+        }
+        self.expect(Token::BracketClose)?;
+        Ok(self.ast.add(Node::List(values)))
+    }
+
+    fn list(&mut self) -> Res<usize> {
+        self.push_scope();
+        let ret = self._list();
+        self.pop_scope();
+        if let Ok(id) = ret {
+            self.operands.push(id);
+        }
+        ret
+    }
+
     fn _call(&mut self, name: String) -> Res<usize> {
         self.expect(Token::ParenOpen)?;
         let mut args = Vec::new();
@@ -115,11 +160,9 @@ impl<'a> Parser<'a> {
     }
 
     fn call(&mut self, name: String) -> Res<usize> {
-        let operators = std::mem::take(&mut self.operators);
-        let operands = std::mem::take(&mut self.operands);
+        self.push_scope();
         let ret = self._call(name);
-        self.operators = operators;
-        self.operands = operands;
+        self.pop_scope();
         if let Ok(id) = ret {
             self.operands.push(id);
         }
@@ -587,6 +630,19 @@ mod test {
                 Node::Value(Value::Natural(2)),
                 Node::Binary(9, Operator::Mul, 10),
                 Node::Binary(2, Operator::Assign, 11),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_parse_list() {
+        check_exprs(
+            "[1, 2, 3]",
+            vec![
+                Node::Value(Value::Natural(1)),
+                Node::Value(Value::Natural(2)),
+                Node::Value(Value::Natural(3)),
+                Node::List(vec![0, 1, 2]),
             ],
         )
     }

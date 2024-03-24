@@ -5,8 +5,8 @@ use crate::{
     AppState, Res, CACHE_TITLE,
 };
 
-const COMMANDS: &[(&str, &'static dyn Fn(&[String], &mut AppState) -> Res<()>)] =
-    &[("exit", &exit), ("save", &save), ("load", &load)];
+type CommandHandler = &'static dyn Fn(&[String], &mut AppState) -> Res<()>;
+const COMMANDS: &[(&str, CommandHandler)] = &[("exit", &exit), ("save", &save), ("load", &load)];
 
 fn single_opt_arg(args: &[String]) -> Res<Option<&str>> {
     match args {

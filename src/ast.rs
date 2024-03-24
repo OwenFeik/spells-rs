@@ -2,16 +2,33 @@ use crate::{operator::Operator, value::Value};
 
 #[derive(Debug, PartialEq)]
 pub enum Node {
+    Value(Value),
+    Identifier(String),
+    List(Vec<usize>),
     Call(String, Vec<usize>),
     Binary(usize, Operator, usize),
     Unary(usize, Operator),
-    Identifier(String),
-    Value(Value),
 }
 
 impl Node {
     fn copy(&self, from: &Ast, to: &mut Ast) -> Option<usize> {
         match self {
+            Node::Value(val) => Some(to.add(Self::Value(val.clone()))),
+            Node::Identifier(name) => Some(to.add(Self::Identifier(name.clone()))),
+            Node::List(values) => {
+                let mut new_vals = Vec::new();
+                for &val in values {
+                    new_vals.push(from.get(val)?.copy(from, to)?);
+                }
+                Some(to.add(Self::List(new_vals)))
+            }
+            Node::Call(name, args) => {
+                let mut new_args = Vec::new();
+                for &arg in args {
+                    new_args.push(from.get(arg)?.copy(from, to)?);
+                }
+                Some(to.add(Node::Call(name.clone(), new_args)))
+            }
             &Node::Binary(lhs, op, rhs) => {
                 let lhs = from.get(lhs)?.copy(from, to)?;
                 let rhs = from.get(rhs)?.copy(from, to)?;
@@ -21,15 +38,6 @@ impl Node {
                 let arg = from.get(arg)?.copy(from, to)?;
                 Some(to.add(Self::Unary(arg, op)))
             }
-            Node::Call(name, args) => {
-                let mut new_args = Vec::new();
-                for &arg in args {
-                    new_args.push(from.get(arg)?.copy(from, to)?);
-                }
-                Some(to.add(Node::Call(name.clone(), new_args)))
-            }
-            Node::Identifier(name) => Some(to.add(Self::Identifier(name.clone()))),
-            Node::Value(val) => Some(to.add(Self::Value(val.clone()))),
         }
     }
 
@@ -82,6 +90,22 @@ impl Ast {
     fn _render(&self, id: usize) -> String {
         if let Some(node) = self.get(id) {
             match node {
+                Node::Value(Value::Outcome(oc)) => format!("{}", oc.roll),
+                Node::Value(Value::Empty) => "ERROR".to_string(),
+                Node::Value(v) => format!("{v}"),
+                Node::Identifier(name) => name.clone(),
+                Node::List(values) => {
+                    format!(
+                        "[{}]",
+                        values.iter().fold(String::new(), |mut acc, el| {
+                            if !acc.is_empty() {
+                                acc.push_str(", ");
+                            }
+                            acc.push_str(&self._render(*el));
+                            acc
+                        })
+                    )
+                }
                 &Node::Binary(lhs, op, rhs) => {
                     format!("{} {} {}", self._render(lhs), op.char(), self._render(rhs))
                 }
@@ -93,10 +117,6 @@ impl Ast {
                         format!("{}{}", op.char(), arg)
                     }
                 }
-                Node::Value(Value::Outcome(oc)) => format!("{}", oc.roll),
-                Node::Value(Value::Empty) => "ERROR".to_string(),
-                Node::Value(v) => format!("{v}"),
-                Node::Identifier(name) => name.clone(),
                 Node::Call(name, args) => {
                     format!(
                         "{name}({})",

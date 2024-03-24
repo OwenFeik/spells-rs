@@ -1,6 +1,5 @@
 #![feature(fs_try_exists)]
 #![feature(let_chains)]
-#![feature(split_at_checked)]
 
 mod ast;
 mod builtins;

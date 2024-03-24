@@ -73,6 +73,15 @@ fn variable(ast: &Ast, context: &mut Context, name: &str) -> Res<Outcome> {
     err(format!("Undefined variable: {name}."))
 }
 
+fn list(ast: &Ast, context: &mut Context, values: &[usize]) -> Res<Outcome> {
+    let mut list = Vec::new();
+    for &index in values {
+        let val = evaluate_node(ast, context, index)?;
+        list.push(val.value);
+    }
+    Ok(Outcome::new(Value::List(list)))
+}
+
 fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize) -> Res<Outcome> {
     if matches!(op, Operator::Assign) {
         assign(ast, context, lhs, rhs)
@@ -110,11 +119,12 @@ fn unary(ast: &Ast, context: &mut Context, op: Operator, arg: usize) -> Res<Outc
 fn evaluate_node(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
     if let Some(expr) = ast.get(index) {
         match expr {
+            Node::Value(val) => Ok(Outcome::new(val.clone())),
+            Node::Identifier(name) => variable(ast, context, name),
+            Node::List(values) => list(ast, context, values),
             &Node::Binary(lhs, op, rhs) => binary(ast, context, op, lhs, rhs),
             &Node::Unary(arg, op) => unary(ast, context, op, arg),
-            Node::Value(val) => Ok(Outcome::new(val.clone())),
             Node::Call(name, args) => call(ast, context, name, args),
-            Node::Identifier(name) => variable(ast, context, name),
         }
     } else {
         err("Attempted to evaluate expression which did not exist.")

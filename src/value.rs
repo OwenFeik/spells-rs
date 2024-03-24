@@ -145,15 +145,15 @@ impl Display for Value {
                 )
             }
             Value::List(values) => {
-                write!(f, "[")?;
-                let len = values.len();
-                for (i, value) in values.iter().enumerate() {
-                    write!(f, "{value}")?;
-                    if i < len {
-                        write!(f, ", ")?;
-                    }
-                }
-                write!(f, "]")
+                write!(
+                    f,
+                    "[{}]",
+                    values
+                        .iter()
+                        .map(|r| r.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
             }
             Value::String(s) => write!(f, r#""{}""#, s.replace('"', "\\\"")),
             Value::Empty => write!(f, "()"),
@@ -163,17 +163,26 @@ impl Display for Value {
 
 #[cfg(test)]
 mod test {
-    use crate::context::Context;
+    use crate::{context::Context, eval};
 
     use super::*;
 
+    fn test_homoiconicity(val: Value) {
+        let mut cx = Context::empty();
+        assert_eq!(eval(&val.to_string(), &mut cx).unwrap().value, val);
+    }
+
     #[test]
     fn test_quotes_escaped() {
-        let mut context = Context::empty();
-        let value = Value::String("\"quoted\"".into());
-        assert_eq!(
-            crate::eval(&value.to_string(), &mut context).unwrap().value,
-            value
-        );
+        test_homoiconicity(Value::String("\"quoted\"".into()));
+    }
+
+    #[test]
+    fn test_list() {
+        test_homoiconicity(Value::List(vec![
+            Value::String("abc".into()),
+            Value::Natural(1),
+            Value::Roll(Roll::new(8, 8)),
+        ]));
     }
 }
