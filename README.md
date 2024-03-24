@@ -6,12 +6,13 @@
 
 ```
 expr := term { binary term }
-term := factor | call | ( expr ) | unary-prefix term | term unary-postfix 
+term := factor | call | list | ( expr ) | unary-prefix term | term unary-postfix 
 binary := + | - | * | / | ^ | k | = | :=
 call := identifier ( expr { , expr } )
+list := [ expr { , expr } ]
 unary-postfix := a | d | s | k
 unary-prefix := -
-factor := roll | number | identfifier
+factor := roll | number | identifier
 roll := /[0-9]*d[0-9]+/ 
 number := /[0-9]+(.[0-9]+)?/
 identifier := /[a-zA-Z][a-zA-Z0-9]*/
