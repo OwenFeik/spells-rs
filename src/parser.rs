@@ -91,6 +91,7 @@ impl<'a> Parser<'a> {
                 }
             }
             Token::Natural(n) => Ok(self.push_operand(Node::Value(Value::Natural(n as i32)))),
+            Token::Decimal(v) => Ok(self.push_operand(Node::Value(Value::Decimal(v)))),
             Token::Roll(q, d) => Ok(self.push_operand(Node::Value(Value::Roll(Roll::new(q, d))))),
             Token::String(val) => Ok(self.push_operand(Node::Value(Value::String(val)))),
             Token::ParenOpen => {
@@ -643,6 +644,20 @@ mod test {
                 Node::Value(Value::Natural(2)),
                 Node::Value(Value::Natural(3)),
                 Node::List(vec![0, 1, 2]),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_parse_list_of_exprs() {
+        check_exprs(
+            "[[\"a\", 1], 8d8]",
+            vec![
+                Node::Value(Value::String("a".into())),
+                Node::Value(Value::Natural(1)),
+                Node::List(vec![0, 1]),
+                Node::Value(Value::Roll(Roll::new(8, 8))),
+                Node::List(vec![2, 3]),
             ],
         )
     }

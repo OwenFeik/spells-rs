@@ -1,9 +1,10 @@
 use crate::{operator::Operator, Res};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Identifier(String),
     Natural(u32),
+    Decimal(f32),
     Roll(u32, u32),
     Operator(Operator),
     String(String),
@@ -31,6 +32,7 @@ impl Token {
             '^' => Some(Self::Operator(Operator::Exp)),
             'k' => Some(Self::Operator(Operator::Keep)),
             '_' => Some(Self::Identifier(String::from("_"))),
+            '.' => Some(Self::Decimal(0.0)),
             _ if c.is_numeric() => c.to_digit(10).map(Self::Natural),
             _ if c.is_alphabetic() => Some(Self::Identifier(String::from(c))),
             _ => None,
@@ -41,6 +43,7 @@ impl Token {
         match self {
             Token::Identifier(_) => '!',
             Token::Natural(_) => '#',
+            Token::Decimal(_) => '.',
             Token::Roll(_, _) => '%',
             Token::String(_) => '"',
             Token::ParenOpen => '(',
@@ -300,5 +303,10 @@ mod test {
                 Token::String("string2".into())
             ]
         )
+    }
+
+    #[test]
+    fn test_tokenise_decimal() {
+        assert_eq!(tok_unwrap("3.14159"), vec![Token::Decimal(3.14159)])
     }
 }

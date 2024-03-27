@@ -45,9 +45,12 @@ sixteen = 16
 * Integers. These are stored as `u32`. Rolls can be coerced to integers by
     evaluating them and taking a some of their outcomes.
 * Numbers. These are stored as `f64`. Integers can be coerced to numbers.
-* Strings.
-* Lists. These contain a collection of integers.
+* Strings. These are stored as rust `String`s. They are written `"string"`.
+* Lists. These contain a collection of other values.
     * `[1, 2, 3, 4, 5]`
+    * `["a", "b", 2]`
+    * `[["a"], [1]]`
+    * `[d4, d6, d8, d10, d12]`
 * Evaluated rolls. These are a `(roll, list)` pair. They can be coerced to a
     list by discarding the roll.
     * `(d20, [18])`
