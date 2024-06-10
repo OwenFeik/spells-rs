@@ -76,7 +76,9 @@ fn main() {
     loop {
         match state.input.line() {
             Ok(text) => {
-                if text.starts_with('.') {
+                if text.trim().is_empty() {
+                    // ignore empty lines
+                } else if text.starts_with('.') {
                     if let Err(e) = commands::handle(&text, &mut state) {
                         println!("{e}");
                     }

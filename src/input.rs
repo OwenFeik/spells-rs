@@ -17,26 +17,35 @@ impl Display for InputError {
 }
 
 pub struct Input {
-    editor: rustyline::DefaultEditor,
+    editor: rustyline::Editor<(), rustyline::history::MemHistory>,
 }
 
 impl Input {
     const PROMPT: &'static str = "> ";
 
     pub fn new() -> Self {
-        Self {
-            editor: rustyline::DefaultEditor::new().unwrap(),
-        }
+        let editor = rustyline::Editor::with_history(
+            rustyline::Config::default(),
+            rustyline::history::MemHistory::new(),
+        )
+        .expect("Failed to initialise terminal editor.");
+        Self { editor }
     }
 
     fn readline(&mut self, prompt: &str) -> Result<String, InputError> {
-        match self.editor.readline(prompt) {
+        let line = match self.editor.readline(prompt) {
             Ok(line) => Ok(line),
             Err(rustyline::error::ReadlineError::WindowResized) => self.line(),
             Err(rustyline::error::ReadlineError::Eof) => Err(InputError::Eof),
             Err(rustyline::error::ReadlineError::Interrupted) => Err(InputError::Interrupt),
             Err(err) => Err(InputError::Other(err.to_string())),
-        }
+        }?;
+
+        (self.editor.history_mut() as &mut dyn rustyline::history::History)
+            .add(&line)
+            .ok();
+
+        Ok(line)
     }
 
     pub fn prompt(&mut self, prompt: &str) -> Result<String, InputError> {
