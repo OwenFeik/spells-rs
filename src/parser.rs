@@ -91,7 +91,10 @@ impl<'a> Parser<'a> {
                 }
             }
             Token::Natural(n) => Ok(self.push_operand(Node::Value(Value::Natural(n as i64)))),
-            Token::Decimal(v) => Ok(self.push_operand(Node::Value(Value::Decimal(v)))),
+            Token::Decimal(text) => match text.parse() {
+                Ok(v) => Ok(self.push_operand(Node::Value(Value::Decimal(v)))),
+                Err(_) => Err(format!("Invalid numeric literal: '{text}'.")),
+            },
             Token::Roll(q, d) => Ok(self.push_operand(Node::Value(Value::Roll(Roll::new(q, d))))),
             Token::String(val) => Ok(self.push_operand(Node::Value(Value::String(val)))),
             Token::ParenOpen => {

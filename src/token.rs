@@ -4,7 +4,7 @@ use crate::{operator::Operator, Res};
 pub enum Token {
     Identifier(String),
     Natural(u64),
-    Decimal(f64),
+    Decimal(String),
     Roll(u64, u64),
     Operator(Operator),
     String(String),
@@ -32,7 +32,7 @@ impl Token {
             '^' => Some(Self::Operator(Operator::Exp)),
             'k' => Some(Self::Operator(Operator::Keep)),
             '_' => Some(Self::Identifier(String::from("_"))),
-            '.' => Some(Self::Decimal(0.0)),
+            '.' => Some(Self::Decimal(String::from("."))),
             _ if c.is_numeric() => c.to_digit(10).map(|v| Self::Natural(v as u64)),
             _ if c.is_alphabetic() => Some(Self::Identifier(String::from(c))),
             _ => None,
@@ -62,14 +62,14 @@ impl Token {
                     if val.ends_with('\\') {
                         val.truncate(val.len() - 1);
                         val.push('"');
-                        Ok((None, Some(Self::String(val))))
+                        extended(Self::String(val))
                     } else {
-                        Ok((Some(Self::String(val)), None))
+                        finished(Self::String(val))
                     }
                 }
                 _ => {
                     val.push(c);
-                    Ok((None, Some(Self::String(val))))
+                    extended(Self::String(val))
                 }
             };
         }
@@ -78,15 +78,19 @@ impl Token {
             let n = n as u64;
             match self {
                 Self::Identifier(d) if d == "d" => {
-                    return Ok((None, Some(Self::Roll(1, n))));
+                    return extended(Self::Roll(1, n));
                 }
                 Self::Identifier(mut name) => {
                     name.push(c);
-                    return Ok((None, Some(Self::Identifier(name))));
+                    return extended(Self::Identifier(name));
                 }
-                Self::Natural(v) => return Ok((None, Some(Self::Natural(v * 10 + n)))),
-                Self::Roll(q, s) => return Ok((None, Some(Self::Roll(q, s * 10 + n)))),
-                Self::Operator(Operator::DisAdv) => return Ok((None, Some(Self::Roll(1, n)))),
+                Self::Natural(v) => return extended(Self::Natural(v * 10 + n)),
+                Self::Roll(q, s) => return extended(Self::Roll(q, s * 10 + n)),
+                Self::Operator(Operator::DisAdv) => return extended(Self::Roll(1, n)),
+                Self::Decimal(mut text) => {
+                    text.push(c);
+                    return extended(Self::Decimal(text));
+                }
                 _ => {}
             }
         }
@@ -96,25 +100,44 @@ impl Token {
                 Self::Natural(v) if c == 'd' => return Ok((None, Some(Self::Roll(v, 0)))),
                 Self::Identifier(mut name) => {
                     name.push(c);
-                    return Ok((None, Some(Self::Identifier(name))));
+                    return extended(Self::Identifier(name));
                 }
                 Self::Roll(..) if c == 'a' || c == 'd' || c == 's' => {
                     return match c {
-                        'a' => Ok((Some(self), Some(Token::Operator(Operator::Adv)))),
-                        'd' => Ok((Some(self), Some(Token::Operator(Operator::DisAdv)))),
-                        _ => Ok((Some(self), Some(Token::Operator(Operator::Sort)))),
+                        'a' => finished_and(self, Self::Operator(Operator::Adv)),
+                        'd' => finished_and(self, Self::Operator(Operator::DisAdv)),
+                        _ => finished_and(self, Self::Operator(Operator::Sort)),
                     }
                 }
                 _ if self.char().is_alphabetic() => {
                     let name = [self.char(), c].iter().collect();
-                    return Ok((None, Some(Self::Identifier(name))));
+                    return extended(Self::Identifier(name));
                 }
                 _ => {}
             }
         }
 
+        if c == '.' {
+            return match self {
+                Self::Natural(v) => extended(Self::Decimal(format!("{v}."))),
+                _ => finished_and(self, Self::Decimal(".".to_string())),
+            };
+        }
+
         Ok((Some(self), Self::from(c)))
     }
+}
+
+fn extended(token: Token) -> Res<(Option<Token>, Option<Token>)> {
+    Ok((None, Some(token)))
+}
+
+fn finished(token: Token) -> Res<(Option<Token>, Option<Token>)> {
+    Ok((Some(token), None))
+}
+
+fn finished_and(completed: Token, next: Token) -> Res<(Option<Token>, Option<Token>)> {
+    Ok((Some(completed), Some(next)))
 }
 
 pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
@@ -308,7 +331,10 @@ mod test {
 
     #[test]
     fn test_tokenise_decimal() {
-        assert_eq!(tok_unwrap("3.14159"), vec![Token::Decimal(3.14159)])
+        assert_eq!(
+            tok_unwrap("3.14159"),
+            vec![Token::Decimal("3.14159".into())]
+        )
     }
 
     #[test]
@@ -318,7 +344,7 @@ mod test {
             vec![
                 Token::Identifier("floor".into()),
                 Token::ParenOpen,
-                Token::Decimal(2.72),
+                Token::Decimal("2.72".into()),
                 Token::ParenClose
             ]
         )
