@@ -3,9 +3,9 @@ use crate::{operator::Operator, Res};
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Identifier(String),
-    Natural(u32),
-    Decimal(f32),
-    Roll(u32, u32),
+    Natural(u64),
+    Decimal(f64),
+    Roll(u64, u64),
     Operator(Operator),
     String(String),
     ParenOpen,
@@ -33,7 +33,7 @@ impl Token {
             'k' => Some(Self::Operator(Operator::Keep)),
             '_' => Some(Self::Identifier(String::from("_"))),
             '.' => Some(Self::Decimal(0.0)),
-            _ if c.is_numeric() => c.to_digit(10).map(Self::Natural),
+            _ if c.is_numeric() => c.to_digit(10).map(|v| Self::Natural(v as u64)),
             _ if c.is_alphabetic() => Some(Self::Identifier(String::from(c))),
             _ => None,
         }
@@ -75,6 +75,7 @@ impl Token {
         }
 
         if let Some(n) = c.to_digit(10) {
+            let n = n as u64;
             match self {
                 Self::Identifier(d) if d == "d" => {
                     return Ok((None, Some(Self::Roll(1, n))));
@@ -308,5 +309,18 @@ mod test {
     #[test]
     fn test_tokenise_decimal() {
         assert_eq!(tok_unwrap("3.14159"), vec![Token::Decimal(3.14159)])
+    }
+
+    #[test]
+    fn test_tokenise_decimal_call() {
+        assert_eq!(
+            tok_unwrap("floor(2.72)"),
+            vec![
+                Token::Identifier("floor".into()),
+                Token::ParenOpen,
+                Token::Decimal(2.72),
+                Token::ParenClose
+            ]
+        )
     }
 }

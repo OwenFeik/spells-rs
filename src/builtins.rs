@@ -49,7 +49,7 @@ impl<'a> BuiltinCall<'a> {
         Ok(self.args[0].clone())
     }
 
-    fn single_decimal(&self) -> Res<f32> {
+    fn single_decimal(&self) -> Res<f64> {
         self.single_value().and_then(Value::decimal)
     }
 
@@ -61,19 +61,19 @@ impl<'a> BuiltinCall<'a> {
 const BUILTINS: &[Builtin] = &[
     Builtin {
         name: "ceil",
-        call: &|gfc| gfc.single_decimal().map(|v| Outcome::nat(v.ceil() as i32)),
+        call: &|gfc| gfc.single_decimal().map(|v| Outcome::nat(v.ceil() as i64)),
     },
     Builtin {
         name: "floor",
-        call: &|gfc| gfc.single_decimal().map(|v| Outcome::nat(v.floor() as i32)),
+        call: &|gfc| gfc.single_decimal().map(|v| Outcome::nat(v.floor() as i64)),
     },
     Builtin {
         name: "quantity",
-        call: &|gfc| gfc.single_roll().map(|r| Outcome::nat(r.quantity as i32)),
+        call: &|gfc| gfc.single_roll().map(|r| Outcome::nat(r.quantity as i64)),
     },
     Builtin {
         name: "dice",
-        call: &|gfc| gfc.single_roll().map(|r| Outcome::nat(r.die as i32)),
+        call: &|gfc| gfc.single_roll().map(|r| Outcome::nat(r.die as i64)),
     },
 ];
 

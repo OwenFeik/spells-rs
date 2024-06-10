@@ -8,24 +8,24 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
-    Decimal(f32),
-    Natural(i32),
+    Decimal(f64),
+    Natural(i64),
     Outcome(RollOutcome),
     Roll(Roll),
-    Rolls(Vec<u32>),
+    Rolls(Vec<u64>),
     List(Vec<Value>),
     String(String),
     Empty,
 }
 
 impl Value {
-    pub fn decimal(self) -> Res<f32> {
+    pub fn decimal(self) -> Res<f64> {
         match self {
             Self::Decimal(v) => Ok(v),
-            Self::Natural(v) => Ok(v as f32),
+            Self::Natural(v) => Ok(v as f64),
             Self::Roll(..) => Self::Rolls(self.rolls()?).decimal(),
-            Self::Rolls(rolls) => Ok(rolls.iter().sum::<u32>() as f32),
-            Self::Outcome(outcome) => Ok(outcome.result as f32),
+            Self::Rolls(rolls) => Ok(rolls.iter().sum::<u64>() as f64),
+            Self::Outcome(outcome) => Ok(outcome.result as f64),
             Self::List(values) => {
                 let mut total = 0.0;
                 for value in values {
@@ -38,13 +38,13 @@ impl Value {
         }
     }
 
-    pub fn natural(self) -> Res<i32> {
+    pub fn natural(self) -> Res<i64> {
         match self {
-            Self::Decimal(v) => Ok(v as i32),
+            Self::Decimal(v) => Ok(v as i64),
             Self::Natural(v) => Ok(v),
-            Self::Outcome(outcome) => Ok(outcome.result as i32),
-            Self::Roll(_) => Ok(self.outcome()?.result as i32),
-            Self::Rolls(rolls) => Ok(rolls.iter().sum::<u32>() as i32),
+            Self::Outcome(outcome) => Ok(outcome.result as i64),
+            Self::Roll(_) => Ok(self.outcome()?.result as i64),
+            Self::Rolls(rolls) => Ok(rolls.iter().sum::<u64>() as i64),
             Self::List(values) => {
                 let mut total = 0;
                 for value in values {
@@ -57,7 +57,7 @@ impl Value {
         }
     }
 
-    pub fn rolls(self) -> Res<Vec<u32>> {
+    pub fn rolls(self) -> Res<Vec<u64>> {
         match self {
             Self::Decimal(_) => err("Decimal value cannot be interpreted as rolls."),
             Self::Natural(_) => err("Natural value cannot be interpreted as rolls."),

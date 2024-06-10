@@ -28,7 +28,7 @@ impl Outcome {
         Ok((self, outcome))
     }
 
-    pub fn rolls(self) -> Res<(Self, Vec<u32>)> {
+    pub fn rolls(self) -> Res<(Self, Vec<u64>)> {
         if matches!(self.value, Value::Roll(_)) {
             let (val, outcome) = self.outcome()?;
             Ok((val, Value::Outcome(outcome).rolls()?))
@@ -38,27 +38,27 @@ impl Outcome {
         }
     }
 
-    pub fn natural(self) -> Res<(Self, i32)> {
+    pub fn natural(self) -> Res<(Self, i64)> {
         if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
             let (this, outcome) = self.outcome()?;
-            Ok((this, outcome.result as i32))
+            Ok((this, outcome.result as i64))
         } else {
             let value = self.value.clone().natural()?;
             Ok((self, value))
         }
     }
 
-    pub fn decimal(self) -> Res<(Self, f32)> {
+    pub fn decimal(self) -> Res<(Self, f64)> {
         if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
             let (this, outcome) = self.outcome()?;
-            Ok((this, outcome.result as f32))
+            Ok((this, outcome.result as f64))
         } else {
             let value = self.value.clone().decimal()?;
             Ok((self, value))
         }
     }
 
-    fn arithmetic<F: Fn(f32, f32) -> f32>(self, other: Outcome, f: F) -> Res<Outcome> {
+    fn arithmetic<F: Fn(f64, f64) -> f64>(self, other: Outcome, f: F) -> Res<Outcome> {
         let (mut this, lhs) = self.decimal()?;
         let (mut that, rhs) = other.decimal()?;
         this.rolls.append(&mut that.rolls);
@@ -156,7 +156,7 @@ impl Outcome {
         })
     }
 
-    pub fn nat(value: i32) -> Self {
+    pub fn nat(value: i64) -> Self {
         Self::new(Value::Natural(value))
     }
 

@@ -90,7 +90,7 @@ impl<'a> Parser<'a> {
                     Ok(id)
                 }
             }
-            Token::Natural(n) => Ok(self.push_operand(Node::Value(Value::Natural(n as i32)))),
+            Token::Natural(n) => Ok(self.push_operand(Node::Value(Value::Natural(n as i64)))),
             Token::Decimal(v) => Ok(self.push_operand(Node::Value(Value::Decimal(v)))),
             Token::Roll(q, d) => Ok(self.push_operand(Node::Value(Value::Roll(Roll::new(q, d))))),
             Token::String(val) => Ok(self.push_operand(Node::Value(Value::String(val)))),

@@ -2,14 +2,14 @@ use std::fmt::Display;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Roll {
-    pub quantity: u32,
-    pub die: u32,
+    pub quantity: u64,
+    pub die: u64,
     pub advantage: bool,
     pub disadvantage: bool,
 }
 
 impl Roll {
-    pub fn new(quantity: u32, die: u32) -> Self {
+    pub fn new(quantity: u64, die: u64) -> Self {
         Roll {
             quantity,
             die,
@@ -44,8 +44,8 @@ impl Display for Roll {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RollOutcome {
     pub roll: Roll,
-    pub rolls: Vec<u32>,
-    pub result: u32,
+    pub rolls: Vec<u64>,
+    pub result: u64,
 }
 
 impl Display for RollOutcome {
@@ -56,7 +56,7 @@ impl Display for RollOutcome {
             self.roll,
             self.rolls
                 .iter()
-                .map(u32::to_string)
+                .map(u64::to_string)
                 .collect::<Vec<String>>()
                 .join(", "),
             self.result
