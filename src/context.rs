@@ -163,7 +163,7 @@ impl Context {
             self.pop_scope();
             ret
         } else {
-            crate::builtins::call(name, &args)
+            crate::builtins::call(name, args)
         }
     }
 

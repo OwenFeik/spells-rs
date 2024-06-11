@@ -21,7 +21,7 @@ pub const DEFAULT_GLOBALS: &[&str] = &[
     "spend_cp(cp) = WEALTH_CP = WEALTH_CP - cp",
     "gain_cp(cp) = spend_cp(-cp)",
     "spend_sp(sp) = spend_cp(sp * 10) / 10",
-    "gain_sp(cp) = spend_sp(-cp)",
+    "gain_sp(sp) = spend_sp(-sp)",
     "spend_ep(ep) = spend_cp(ep * 50) / 50",
     "gain_ep(ep) = spend_ep(-ep)",
     "spend_gp(gp) = spend_cp(gp * 100) / 100",
@@ -33,55 +33,90 @@ pub const DEFAULT_GLOBALS: &[&str] = &[
 
 struct Builtin {
     name: &'static str,
-    call: &'static dyn Fn(&BuiltinCall) -> Res<Outcome>,
+    args: usize,
+    func: &'static dyn Fn(BuiltinCall) -> Res<Outcome>,
+}
+
+impl Builtin {
+    fn call(&self, gfc: BuiltinCall) -> Res<Outcome> {
+        eval::check_argument_count(self.name, self.args, &gfc.args)?;
+        (self.func)(gfc)
+    }
 }
 
 struct BuiltinCall<'a> {
     gf: &'a Builtin,
-    args: &'a [Value],
+    args: Vec<Value>,
 }
 
 impl<'a> BuiltinCall<'a> {
-    fn single_value(&self) -> Res<Value> {
-        eval::check_argument_count(self.gf.name, 1, self.args)?;
-
-        // Index safe because we checked length is 1.
-        Ok(self.args[0].clone())
+    fn pop(&mut self) -> Res<Value> {
+        if let Some(val) = self.args.pop() {
+            Ok(val)
+        } else {
+            Err(format!(
+                "Incorrect number of arguments: {} expects {}.",
+                self.gf.name, self.gf.args
+            ))
+        }
     }
 
-    fn single_decimal(&self) -> Res<f64> {
-        self.single_value().and_then(Value::decimal)
+    fn pop_decimal(&mut self) -> Res<f64> {
+        self.pop().and_then(Value::decimal)
     }
 
-    fn single_roll(&self) -> Res<Roll> {
-        self.single_value().and_then(Value::roll)
+    fn pop_roll(&mut self) -> Res<Roll> {
+        self.pop().and_then(Value::roll)
+    }
+
+    fn pop_list(&mut self) -> Res<Vec<Value>> {
+        self.pop().and_then(Value::list)
+    }
+
+    fn pop_natural(&mut self) -> Res<i64> {
+        self.pop().and_then(Value::natural)
     }
 }
 
 const BUILTINS: &[Builtin] = &[
     Builtin {
         name: "ceil",
-        call: &|gfc| gfc.single_decimal().map(|v| Outcome::nat(v.ceil() as i64)),
+        args: 1,
+        func: &|mut gfc| gfc.pop_decimal().map(|v| Outcome::nat(v.ceil() as i64)),
     },
     Builtin {
         name: "floor",
-        call: &|gfc| gfc.single_decimal().map(|v| Outcome::nat(v.floor() as i64)),
+        args: 1,
+        func: &|mut gfc| gfc.pop_decimal().map(|v| Outcome::nat(v.floor() as i64)),
     },
     Builtin {
         name: "quantity",
-        call: &|gfc| gfc.single_roll().map(|r| Outcome::nat(r.quantity as i64)),
+        args: 1,
+        func: &|mut gfc| gfc.pop_roll().map(|r| Outcome::nat(r.quantity as i64)),
     },
     Builtin {
-        name: "dice",
-        call: &|gfc| gfc.single_roll().map(|r| Outcome::nat(r.die as i64)),
+        name: "get",
+        args: 2,
+        func: &|mut gfc| {
+            let index = gfc.pop_natural()?;
+            let list = gfc.pop_list()?;
+
+            if index < 0 || index as usize >= list.len() {
+                Err(format!(
+                    "Index {index} of range for list of length {}.",
+                    list.len()
+                ))
+            } else {
+                Ok(Outcome::new(list.get(index as usize).cloned().unwrap()))
+            }
+        },
     },
 ];
 
-pub fn call(name: &str, args: &[Value]) -> Res<Outcome> {
+pub fn call(name: &str, args: Vec<Value>) -> Res<Outcome> {
     for gf in BUILTINS {
         if gf.name == name {
-            let gfc = BuiltinCall { gf, args };
-            return (gf.call)(&gfc);
+            return (gf.func)(BuiltinCall { gf, args });
         }
     }
     err(format!("Undefined function: {name}."))

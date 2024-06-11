@@ -8,6 +8,7 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
+    Bool(bool),
     Decimal(f64),
     Natural(i64),
     Outcome(RollOutcome),
@@ -33,6 +34,7 @@ impl Value {
                 }
                 Ok(total)
             }
+            Self::Bool(v) => Err(format!("{v} cannot be interpreted as decimal.")),
             Self::String(_) => err("String cannot be interpreted as decimal."),
             Self::Empty => err("Empty cannot be interpreted as decimal."),
         }
@@ -52,6 +54,7 @@ impl Value {
                 }
                 Ok(total)
             }
+            Self::Bool(v) => Err(format!("{v} cannot be interpreted as natural.")),
             Self::String(_) => err("String cannot be interpreted as natural."),
             Self::Empty => err("Empty cannot be interpreted as natural."),
         }
@@ -59,6 +62,7 @@ impl Value {
 
     pub fn rolls(self) -> Res<Vec<u64>> {
         match self {
+            Self::Bool(v) => Err(format!("{v} cannot be interpreted as rolls.")),
             Self::Decimal(_) => err("Decimal value cannot be interpreted as rolls."),
             Self::Natural(_) => err("Natural value cannot be interpreted as rolls."),
             Self::Roll(..) => Value::Outcome(self.outcome()?).rolls(),
@@ -124,11 +128,28 @@ impl Value {
             _ => Err(format!("{self} cannot be interpreted as a string.")),
         }
     }
+
+    pub fn list(self) -> Res<Vec<Self>> {
+        match self {
+            Value::String(string) => Ok(string
+                .chars()
+                .map(|c| Value::String(c.to_string()))
+                .collect()),
+            Value::List(values) => Ok(values),
+            Value::Roll(..) | Value::Rolls(..) | Value::Outcome(..) => Ok(self
+                .rolls()?
+                .iter()
+                .map(|v| Self::Natural(*v as i64))
+                .collect()),
+            _ => Err(format!("{self} cannot be interpreted as a list.")),
+        }
+    }
 }
 
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            &Value::Bool(v) => write!(f, "{v}"),
             &Value::Decimal(v) => write!(f, "{}", (v * 100.0).round() / 100.0), // 2 places.
             Value::Natural(v) => write!(f, "{v}"),
             Value::Outcome(v) => write!(f, "{}", v.result),
@@ -184,5 +205,17 @@ mod test {
             Value::Natural(1),
             Value::Roll(Roll::new(8, 8)),
         ]));
+    }
+
+    #[test]
+    fn test_string_as_list() {
+        assert_eq!(
+            Value::String("abc".into()).list(),
+            Ok(vec![
+                Value::String("a".into()),
+                Value::String("b".into()),
+                Value::String("c".into())
+            ])
+        )
     }
 }
