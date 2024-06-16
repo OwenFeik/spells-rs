@@ -24,6 +24,7 @@ impl Input {
     const PROMPT: &'static str = "> ";
 
     pub fn new() -> Self {
+        // TODO ctrl+d only sends EOF if used on an empty line.
         let editor = rustyline::Editor::with_history(
             rustyline::Config::default(),
             rustyline::history::MemHistory::new(),

@@ -111,12 +111,17 @@ const BUILTINS: &[Builtin] = &[
             }
         },
     },
+    Builtin {
+        name: "dice",
+        args: 1,
+        func: &|mut gfc| gfc.pop_roll().map(|r| Outcome::nat(r.die as i64)),
+    },
 ];
 
 pub fn call(name: &str, args: Vec<Value>) -> Res<Outcome> {
     for gf in BUILTINS {
         if gf.name == name {
-            return (gf.func)(BuiltinCall { gf, args });
+            return gf.call(BuiltinCall { gf, args });
         }
     }
     err(format!("Undefined function: {name}."))
@@ -129,33 +134,33 @@ mod test {
     #[test]
     fn test_ceil() {
         assert_eq!(
-            call("ceil", &[Value::Decimal(2.5)])
+            call("ceil", vec![Value::Decimal(2.5)])
                 .and_then(Outcome::decimal)
                 .map(|tup| tup.1)
                 .unwrap(),
             3.0
         );
         assert_eq!(
-            call("ceil", &[Value::Decimal(2.2)])
+            call("ceil", vec![Value::Decimal(2.2)])
                 .and_then(Outcome::decimal)
                 .map(|tup| tup.1)
                 .unwrap(),
             3.0
         );
         assert_eq!(
-            call("ceil", &[Value::Decimal(-2.2)])
+            call("ceil", vec![Value::Decimal(-2.2)])
                 .and_then(Outcome::decimal)
                 .map(|tup| tup.1)
                 .unwrap(),
             -2.0
         );
-        assert!(call("ceil", &[Value::Empty]).is_err());
+        assert!(call("ceil", vec![Value::Empty]).is_err());
     }
 
     #[test]
     fn test_roll() {
         assert_eq!(
-            call("dice", &[Value::Roll(Roll::new(8, 8))])
+            call("dice", vec![Value::Roll(Roll::new(8, 8))])
                 .and_then(Outcome::natural)
                 .map(|tup| tup.1)
                 .unwrap(),
