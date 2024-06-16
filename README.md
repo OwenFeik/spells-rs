@@ -13,7 +13,7 @@ term :=
     | ( expr )
     | unary-prefix term
     | term unary-postfix
-    | if term then term { else term }
+    | if expr then expr { else expr }
 binary := + | - | * | / | ^ | k | =
 call := identifier ( expr { , expr } )
 list := [ expr { , expr } ]

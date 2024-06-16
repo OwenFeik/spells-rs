@@ -138,12 +138,12 @@ impl<'a> Parser<'a> {
     }
 
     fn conditional(&mut self) -> Res<usize> {
-        let cond = self.in_scope(Self::term)?;
+        let cond = self.in_scope(Self::expr)?;
         self.expect(Token::Identifier("then".into()))?;
-        let then = self.in_scope(Self::term)?;
+        let then = self.in_scope(Self::expr)?;
         let fail = if self.peek() == Some(&Token::Identifier("else".into())) {
             self.next()?; // Toss else
-            Some(self.in_scope(Self::term)?)
+            Some(self.in_scope(Self::expr)?)
         } else {
             None
         };
@@ -722,6 +722,23 @@ mod test {
                 Node::name("z"),
                 Node::If(4, 5, Some(6)),
                 Node::Binary(3, Operator::Assign, 7),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_parse_complex_if_condition() {
+        check_exprs(
+            "if 2 + 3 > 4 then \"yes\" else \"no\"",
+            vec![
+                Node::Value(Value::Natural(2)),
+                Node::Value(Value::Natural(3)),
+                Node::Binary(0, Operator::Add, 1),
+                Node::Value(Value::Natural(4)),
+                Node::Binary(2, Operator::GreaterThan, 3),
+                Node::Value(Value::String("yes".into())),
+                Node::Value(Value::String("no".into())),
+                Node::If(4, 5, Some(6)),
             ],
         )
     }
