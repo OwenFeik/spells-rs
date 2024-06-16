@@ -20,6 +20,16 @@ pub enum Value {
 }
 
 impl Value {
+    pub fn bool(self) -> Res<bool> {
+        match self {
+            Value::Bool(v) => Ok(v),
+            Value::Natural(n) => Ok(n != 0),
+            Value::List(vs) => Ok(!vs.is_empty()),
+            Value::String(s) => Ok(!s.is_empty()),
+            _ => Err(format!("{self} cannot be interpreted as a bool.")),
+        }
+    }
+
     pub fn decimal(self) -> Res<f64> {
         match self {
             Self::Decimal(v) => Ok(v),

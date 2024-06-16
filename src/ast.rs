@@ -8,6 +8,7 @@ pub enum Node {
     Call(String, Vec<usize>),
     Binary(usize, Operator, usize),
     Unary(usize, Operator),
+    If(usize, usize, Option<usize>), // Condition, block if true, optional else.
 }
 
 impl Node {
@@ -37,6 +38,14 @@ impl Node {
             &Node::Unary(arg, op) => {
                 let arg = from.get(arg)?.copy(from, to)?;
                 Some(to.add(Self::Unary(arg, op)))
+            }
+            &Node::If(cond, expr, fail) => {
+                let cond = from.get(cond)?.copy(from, to)?;
+                let expr = from.get(expr)?.copy(from, to)?;
+                let fail = fail
+                    .and_then(|n| from.get(n))
+                    .and_then(|n| n.copy(from, to));
+                Some(to.add(Self::If(cond, expr, fail)))
             }
         }
     }
@@ -128,6 +137,22 @@ impl Ast {
                             acc
                         })
                     )
+                }
+                &Node::If(cond, expr, fail) => {
+                    if let Some(node) = fail {
+                        format!(
+                            "if ({}) then ({}) else ({})",
+                            self._render(cond),
+                            self._render(expr),
+                            self._render(node)
+                        )
+                    } else {
+                        format!(
+                            "if ({}) then ({})",
+                            self._render(cond),
+                            self._render(expr)
+                        )
+                    }
                 }
             }
         } else {

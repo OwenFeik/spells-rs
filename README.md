@@ -6,8 +6,15 @@
 
 ```
 expr := term { binary term }
-term := factor | call | list | ( expr ) | unary-prefix term | term unary-postfix
-binary := + | - | * | / | ^ | k | = | :=
+term :=
+    factor
+    | call
+    | list 
+    | ( expr )
+    | unary-prefix term
+    | term unary-postfix
+    | if term then term { else term }
+binary := + | - | * | / | ^ | k | =
 call := identifier ( expr { , expr } )
 list := [ expr { , expr } ]
 unary-postfix := a | d | s | k

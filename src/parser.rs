@@ -85,9 +85,13 @@ impl<'a> Parser<'a> {
                 if let Some(Token::ParenOpen) = self.peek() {
                     self.call(name)
                 } else {
-                    let id = self.ast.add(Node::Identifier(name));
-                    self.operands.push(id);
-                    Ok(id)
+                    match name.as_str() {
+                        "if" => self.conditional(),
+                        "then" | "else" => Err(format!("{name} must follow an opening if.")),
+                        "true" => Ok(self.push_operand(Node::Value(Value::Bool(true)))),
+                        "false" => Ok(self.push_operand(Node::Value(Value::Bool(false)))),
+                        _ => Ok(self.push_operand(Node::Identifier(name))),
+                    }
                 }
             }
             Token::Natural(n) => Ok(self.push_operand(Node::Value(Value::Natural(n as i64)))),
@@ -126,6 +130,29 @@ impl<'a> Parser<'a> {
         Ok(id)
     }
 
+    fn in_scope<F: FnOnce(&mut Self) -> Res<usize>>(&mut self, func: F) -> Res<usize> {
+        self.push_scope();
+        let ret = func(self);
+        self.pop_scope();
+        if let Ok(id) = ret {
+            self.operands.push(id);
+        }
+        ret
+    }
+
+    fn conditional(&mut self) -> Res<usize> {
+        let cond = self.in_scope(Self::term)?;
+        self.expect(Token::Identifier("then".into()))?;
+        let then = self.in_scope(Self::term)?;
+        let fail = if self.peek() == Some(&Token::Identifier("else".into())) {
+            self.next()?; // Toss else
+            Some(self.in_scope(Self::term)?)
+        } else {
+            None
+        };
+        Ok(self.ast.add(Node::If(cond, then, fail)))
+    }
+
     fn _list(&mut self) -> Res<usize> {
         let mut values = Vec::new();
         if !matches!(self.peek(), Some(Token::BracketClose)) {
@@ -140,13 +167,7 @@ impl<'a> Parser<'a> {
     }
 
     fn list(&mut self) -> Res<usize> {
-        self.push_scope();
-        let ret = self._list();
-        self.pop_scope();
-        if let Ok(id) = ret {
-            self.operands.push(id);
-        }
-        ret
+        self.in_scope(Self::_list)
     }
 
     fn _call(&mut self, name: String) -> Res<usize> {
@@ -661,6 +682,31 @@ mod test {
                 Node::List(vec![0, 1]),
                 Node::Value(Value::Roll(Roll::new(8, 8))),
                 Node::List(vec![2, 3]),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_parse_if() {
+        check_exprs(
+            "if true then 1",
+            vec![
+                Node::Value(Value::Bool(true)),
+                Node::Value(Value::Natural(1)),
+                Node::If(0, 1, None),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_parse_if_else() {
+        check_exprs(
+            "if false then 1 else 2",
+            vec![
+                Node::Value(Value::Bool(false)),
+                Node::Value(Value::Natural(1)),
+                Node::Value(Value::Natural(2)),
+                Node::If(0, 1, Some(2)),
             ],
         )
     }

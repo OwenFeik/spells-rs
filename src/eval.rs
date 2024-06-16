@@ -116,6 +116,23 @@ fn unary(ast: &Ast, context: &mut Context, op: Operator, arg: usize) -> Res<Outc
     }
 }
 
+fn condition(
+    ast: &Ast,
+    context: &mut Context,
+    cond: usize,
+    block: usize,
+    fail: Option<usize>,
+) -> Res<Outcome> {
+    let condition = evaluate_node(ast, context, cond)?.value.bool()?;
+    if condition {
+        evaluate_node(ast, context, block)
+    } else if let Some(node) = fail {
+        evaluate_node(ast, context, node)
+    } else {
+        Ok(Outcome::new(Value::Empty))
+    }
+}
+
 fn evaluate_node(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
     if let Some(expr) = ast.get(index) {
         match expr {
@@ -125,6 +142,7 @@ fn evaluate_node(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome>
             &Node::Binary(lhs, op, rhs) => binary(ast, context, op, lhs, rhs),
             &Node::Unary(arg, op) => unary(ast, context, op, arg),
             Node::Call(name, args) => call(ast, context, name, args),
+            &Node::If(cond, expr, fail) => condition(ast, context, cond, expr, fail),
         }
     } else {
         err("Attempted to evaluate expression which did not exist.")
