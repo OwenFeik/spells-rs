@@ -219,7 +219,7 @@ mod test {
     #[test]
     fn test_definition() {
         let mut context = Context::empty();
-        context.eval("func(x, y) := x + y").unwrap();
+        context.eval("func(x, y) = x + y").unwrap();
         let func = context.get_function("func").unwrap();
         assert_eq!(func.body.render(), "x + y");
         assert_eq!(func.parameters, vec!["x".to_string(), "y".to_string()]);

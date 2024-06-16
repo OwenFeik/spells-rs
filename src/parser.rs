@@ -134,9 +134,6 @@ impl<'a> Parser<'a> {
         self.push_scope();
         let ret = func(self);
         self.pop_scope();
-        if let Ok(id) = ret {
-            self.operands.push(id);
-        }
         ret
     }
 
@@ -150,7 +147,7 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        Ok(self.ast.add(Node::If(cond, then, fail)))
+        Ok(self.push_operand(Node::If(cond, then, fail)))
     }
 
     fn _list(&mut self) -> Res<usize> {
@@ -163,7 +160,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect(Token::BracketClose)?;
-        Ok(self.ast.add(Node::List(values)))
+        Ok(self.push_operand(Node::List(values)))
     }
 
     fn list(&mut self) -> Res<usize> {
@@ -707,6 +704,24 @@ mod test {
                 Node::Value(Value::Natural(1)),
                 Node::Value(Value::Natural(2)),
                 Node::If(0, 1, Some(2)),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_parse_if_in_func() {
+        check_exprs(
+            "fn(x, y, z) = if x then y else z",
+            vec![
+                Node::name("x"),
+                Node::name("y"),
+                Node::name("z"),
+                Node::Call("fn".into(), vec![0, 1, 2]),
+                Node::name("x"),
+                Node::name("y"),
+                Node::name("z"),
+                Node::If(4, 5, Some(6)),
+                Node::Binary(3, Operator::Assign, 7),
             ],
         )
     }
