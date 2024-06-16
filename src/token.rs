@@ -24,34 +24,34 @@ impl Token {
             '[' => Some(Self::BracketOpen),
             ']' => Some(Self::BracketClose),
             '"' => Some(Self::String(String::new())),
-            '=' => Some(Self::Operator(Operator::Assign)),
-            '+' => Some(Self::Operator(Operator::Add)),
-            '-' => Some(Self::Operator(Operator::Sub)),
-            '*' => Some(Self::Operator(Operator::Mul)),
-            '/' => Some(Self::Operator(Operator::Div)),
-            '^' => Some(Self::Operator(Operator::Exp)),
-            'k' => Some(Self::Operator(Operator::Keep)),
             '_' => Some(Self::Identifier(String::from("_"))),
             '.' => Some(Self::Decimal(String::from("."))),
             _ if c.is_numeric() => c.to_digit(10).map(|v| Self::Natural(v as u64)),
             _ if c.is_alphabetic() => Some(Self::Identifier(String::from(c))),
-            _ => None,
+            _ => {
+                for op in Operator::TOKENS {
+                    if op.str().starts_with(c) {
+                        return Some(Self::Operator(*op));
+                    }
+                }
+                None
+            }
         }
     }
 
-    fn char(&self) -> char {
+    fn string(&self) -> String {
         match self {
-            Token::Identifier(_) => '!',
-            Token::Natural(_) => '#',
-            Token::Decimal(_) => '.',
-            Token::Roll(_, _) => '%',
-            Token::String(_) => '"',
-            Token::ParenOpen => '(',
-            Token::ParenClose => ')',
-            Token::BracketOpen => '[',
-            Token::BracketClose => ']',
-            Token::Comma => ',',
-            Token::Operator(op) => op.char(),
+            Token::Identifier(name) => name.clone(),
+            Token::Natural(num) => num.to_string(),
+            Token::Decimal(num) => num.to_string(),
+            Token::Roll(q, d) => format!("{q}d{d}"),
+            Token::String(s) => format!("\"{}\"", s.clone()),
+            Token::ParenOpen => String::from("("),
+            Token::ParenClose => String::from(")"),
+            Token::BracketOpen => String::from("["),
+            Token::BracketClose => String::from("]"),
+            Token::Comma => String::from(","),
+            Token::Operator(op) => op.str().to_owned(),
         }
     }
 
@@ -102,16 +102,16 @@ impl Token {
                     name.push(c);
                     return extended(Self::Identifier(name));
                 }
-                Self::Roll(..) if c == 'a' || c == 'd' || c == 's' => {
+                Self::Roll(..) if c == 'a' || c == 'd' || c == 'k' || c == 's' => {
                     return match c {
                         'a' => finished_and(self, Self::Operator(Operator::Adv)),
                         'd' => finished_and(self, Self::Operator(Operator::DisAdv)),
+                        'k' => finished_and(self, Self::Operator(Operator::Keep)),
                         _ => finished_and(self, Self::Operator(Operator::Sort)),
                     }
                 }
-                _ if self.char().is_alphabetic() => {
-                    let name = [self.char(), c].iter().collect();
-                    return extended(Self::Identifier(name));
+                _ if self.string().chars().all(char::is_alphanumeric) => {
+                    return extended(Self::Identifier(format!("{}{}", self.string(), c)));
                 }
                 _ => {}
             }
@@ -122,6 +122,21 @@ impl Token {
                 Self::Natural(v) => extended(Self::Decimal(format!("{v}."))),
                 _ => finished_and(self, Self::Decimal(".".to_string())),
             };
+        }
+
+        if c == '=' {
+            match self {
+                Self::Operator(Operator::Assign) => {
+                    return finished(Token::Operator(Operator::Equal));
+                }
+                Self::Operator(Operator::GreaterThan) => {
+                    return finished(Token::Operator(Operator::GreaterEqual));
+                }
+                Self::Operator(Operator::LessThan) => {
+                    return finished(Token::Operator(Operator::LessEqual));
+                }
+                _ => {}
+            }
         }
 
         Ok((Some(self), Self::from(c)))
@@ -200,14 +215,16 @@ mod test {
             ]
         );
         assert_eq!(
-            tok_unwrap("d4a d8d k 8d8s"),
+            tok_unwrap("d4a d8d 4d6k4 d8s"),
             vec![
                 Token::Roll(1, 4),
                 Token::Operator(Operator::Adv),
                 Token::Roll(1, 8),
                 Token::Operator(Operator::DisAdv),
+                Token::Roll(4, 6),
                 Token::Operator(Operator::Keep),
-                Token::Roll(8, 8),
+                Token::Natural(4),
+                Token::Roll(1, 8),
                 Token::Operator(Operator::Sort)
             ]
         );
@@ -348,5 +365,12 @@ mod test {
                 Token::ParenClose
             ]
         )
+    }
+
+    #[test]
+    fn test_tokenise_all_ops() {
+        for op in Operator::TOKENS {
+            assert_eq!(tok_unwrap(op.str()), vec![Token::Operator(*op)]);
+        }
     }
 }

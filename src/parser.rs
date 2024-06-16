@@ -116,7 +116,7 @@ impl<'a> Parser<'a> {
                 self.push_operator(Operator::Neg);
                 self.term()
             }
-            Token::Operator(op) => err(format!("{} unexpected.", op.char())),
+            Token::Operator(op) => err(format!("{} unexpected.", op.str())),
         }?;
 
         while let Some(Token::Operator(op)) = self.peek()

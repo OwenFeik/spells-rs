@@ -116,14 +116,14 @@ impl Ast {
                     )
                 }
                 &Node::Binary(lhs, op, rhs) => {
-                    format!("{} {} {}", self._render(lhs), op.char(), self._render(rhs))
+                    format!("{} {} {}", self._render(lhs), op.str(), self._render(rhs))
                 }
                 &Node::Unary(arg, op) => {
                     let arg = self._render(arg);
                     if op.is_unary_postfix() {
-                        format!("{}{}", arg, op.char())
+                        format!("{}{}", arg, op.str())
                     } else {
-                        format!("{}{}", op.char(), arg)
+                        format!("{}{}", op.str(), arg)
                     }
                 }
                 Node::Call(name, args) => {
@@ -147,11 +147,7 @@ impl Ast {
                             self._render(node)
                         )
                     } else {
-                        format!(
-                            "if ({}) then ({})",
-                            self._render(cond),
-                            self._render(expr)
-                        )
+                        format!("if ({}) then ({})", self._render(cond), self._render(expr))
                     }
                 }
             }

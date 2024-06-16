@@ -96,11 +96,16 @@ fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize
             Operator::Div => lhs_val.div(rhs_val),
             Operator::Exp => lhs_val.exp(rhs_val),
             Operator::Keep => lhs_val.keep(rhs_val),
+            Operator::Equal => lhs_val.equal(rhs_val),
+            Operator::GreaterThan => lhs_val.greater_than(rhs_val),
+            Operator::LessThan => lhs_val.less_than(rhs_val),
+            Operator::GreaterEqual => lhs_val.greater_equal(rhs_val),
+            Operator::LessEqual => lhs_val.less_equal(rhs_val),
             Operator::Sentinel
             | Operator::Neg
             | Operator::Adv
             | Operator::DisAdv
-            | Operator::Sort => Err(format!("Not a binary operator: {}", op.char())),
+            | Operator::Sort => Err(format!("Not a binary operator: {}", op.str())),
         }
     }
 }
@@ -112,7 +117,7 @@ fn unary(ast: &Ast, context: &mut Context, op: Operator, arg: usize) -> Res<Outc
         Operator::Adv => val.adv(),
         Operator::DisAdv => val.disadv(),
         Operator::Sort => val.sort(),
-        _ => Err(format!("Not a unary operator: {}", op.char())),
+        _ => Err(format!("Not a unary operator: {}", op.str())),
     }
 }
 

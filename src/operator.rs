@@ -12,23 +12,48 @@ pub enum Operator {
     Adv,
     DisAdv,
     Sort,
+    Equal,
+    GreaterThan,
+    LessThan,
+    GreaterEqual,
+    LessEqual,
 }
 
 impl Operator {
+    // Operators which are produced context-free by the tokeniser.
+    pub const TOKENS: &'static [Operator] = &[
+        Operator::Assign,
+        Operator::Add,
+        Operator::Sub,
+        Operator::Mul,
+        Operator::Div,
+        Operator::Exp,
+        Operator::Equal,
+        Operator::GreaterThan,
+        Operator::LessThan,
+        Operator::GreaterEqual,
+        Operator::LessEqual,
+    ];
+
     pub fn precedence(&self) -> u8 {
         match self {
             Operator::Sentinel => 0,
             Operator::Assign => 1,
-            Operator::Add => 2,
-            Operator::Sub => 2,
-            Operator::Mul => 3,
-            Operator::Div => 3,
-            Operator::Exp => 5,
-            Operator::Neg => 4,
-            Operator::Keep => 6,
-            Operator::Adv => 4,
-            Operator::DisAdv => 4,
-            Operator::Sort => 4,
+            Operator::GreaterThan => 2,
+            Operator::LessThan => 2,
+            Operator::GreaterEqual => 2,
+            Operator::LessEqual => 2,
+            Operator::Equal => 2,
+            Operator::Add => 3,
+            Operator::Sub => 3,
+            Operator::Mul => 4,
+            Operator::Div => 4,
+            Operator::Neg => 5,
+            Operator::Adv => 5,
+            Operator::DisAdv => 5,
+            Operator::Sort => 5,
+            Operator::Exp => 6,
+            Operator::Keep => 7,
         }
     }
 
@@ -46,6 +71,11 @@ impl Operator {
             Operator::Adv => false,
             Operator::DisAdv => false,
             Operator::Sort => false,
+            Operator::Equal => true,
+            Operator::GreaterThan => true,
+            Operator::LessThan => true,
+            Operator::GreaterEqual => true,
+            Operator::LessEqual => true,
         }
     }
 
@@ -63,6 +93,11 @@ impl Operator {
             Operator::Adv => false,
             Operator::DisAdv => false,
             Operator::Sort => false,
+            Operator::Equal => true,
+            Operator::GreaterThan => true,
+            Operator::LessThan => true,
+            Operator::GreaterEqual => true,
+            Operator::LessEqual => true,
         }
     }
 
@@ -88,20 +123,25 @@ impl Operator {
         }
     }
 
-    pub fn char(&self) -> char {
+    pub fn str(&self) -> &str {
         match self {
-            Operator::Sentinel => '@',
-            Operator::Assign => '=',
-            Operator::Add => '+',
-            Operator::Sub => '-',
-            Operator::Mul => '*',
-            Operator::Div => '/',
-            Operator::Exp => '^',
-            Operator::Neg => '-',
-            Operator::Keep => 'k',
-            Operator::Adv => 'a',
-            Operator::DisAdv => 'd',
-            Operator::Sort => 's',
+            Operator::Sentinel => "@",
+            Operator::Assign => "=",
+            Operator::Add => "+",
+            Operator::Sub => "-",
+            Operator::Mul => "*",
+            Operator::Div => "/",
+            Operator::Exp => "^",
+            Operator::Neg => "-",
+            Operator::Keep => "k",
+            Operator::Adv => "a",
+            Operator::DisAdv => "d",
+            Operator::Sort => "s",
+            Operator::Equal => "==",
+            Operator::GreaterThan => ">",
+            Operator::LessThan => "<",
+            Operator::GreaterEqual => ">=",
+            Operator::LessEqual => "<=",
         }
     }
 }

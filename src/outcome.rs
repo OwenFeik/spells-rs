@@ -68,6 +68,16 @@ impl Outcome {
         })
     }
 
+    fn numeric_comparison<F: Fn(f64, f64) -> bool>(self, other: Outcome, f: F) -> Res<Outcome> {
+        let (mut this, lhs) = self.decimal()?;
+        let (mut that, rhs) = other.decimal()?;
+        this.rolls.append(&mut that.rolls);
+        Ok(Outcome {
+            value: Value::Bool(f(lhs, rhs)),
+            rolls: this.rolls,
+        })
+    }
+
     pub fn add(self, other: Outcome) -> Res<Outcome> {
         self.arithmetic(other, |lhs, rhs| lhs + rhs)
     }
@@ -153,6 +163,30 @@ impl Outcome {
         Ok(Self {
             value: Value::Rolls(values),
             rolls: this.rolls,
+        })
+    }
+
+    pub fn greater_than(self, rhs: Self) -> Res<Self> {
+        self.numeric_comparison(rhs, |a, b| a > b)
+    }
+
+    pub fn greater_equal(self, rhs: Self) -> Res<Self> {
+        self.numeric_comparison(rhs, |a, b| a >= b)
+    }
+
+    pub fn less_than(self, rhs: Self) -> Res<Self> {
+        self.numeric_comparison(rhs, |a, b| a < b)
+    }
+
+    pub fn less_equal(self, rhs: Self) -> Res<Self> {
+        self.numeric_comparison(rhs, |a, b| a <= b)
+    }
+
+    pub fn equal(mut self, mut other: Self) -> Res<Self> {
+        self.rolls.append(&mut other.rolls);
+        Ok(Self {
+            value: Value::Bool(self.value == other.value),
+            rolls: self.rolls,
         })
     }
 
