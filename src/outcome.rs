@@ -78,8 +78,19 @@ impl Outcome {
         })
     }
 
-    pub fn add(self, other: Outcome) -> Res<Outcome> {
-        self.arithmetic(other, |lhs, rhs| lhs + rhs)
+    pub fn add(mut self, mut other: Outcome) -> Res<Outcome> {
+        if matches!(self.value, Value::String(..)) {
+            let lhs = self.value.string()?;
+            let rhs = other.value.string()?;
+
+            self.rolls.append(&mut other.rolls);
+            Ok(Outcome {
+                value: Value::String(format!("{lhs}{rhs}")),
+                rolls: self.rolls,
+            })
+        } else {
+            self.arithmetic(other, |lhs, rhs| lhs + rhs)
+        }
     }
 
     pub fn sub(self, other: Outcome) -> Res<Outcome> {

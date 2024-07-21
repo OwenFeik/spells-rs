@@ -162,6 +162,7 @@ pub fn evaluate(ast: &Ast, context: &mut Context) -> Res<Outcome> {
 mod test {
     use crate::{
         context::Context,
+        eval,
         parser::parse,
         roll::{Roll, RollOutcome},
         token::tokenise,
@@ -302,6 +303,16 @@ mod test {
         assert_eq!(
             context.get_variable("var").unwrap().natural().unwrap(),
             2 + 3 - 1
+        );
+    }
+
+    #[test]
+    fn test_join_strings() {
+        assert_eq!(
+            eval(r#""abc" + "def""#, &mut Context::empty())
+                .unwrap()
+                .to_string(),
+            r#""abcdef""#
         );
     }
 }

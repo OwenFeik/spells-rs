@@ -76,6 +76,10 @@ impl<'a> BuiltinCall<'a> {
     fn pop_natural(&mut self) -> Res<i64> {
         self.pop().and_then(Value::natural)
     }
+
+    fn pop_string(&mut self) -> Res<String> {
+        self.pop().and_then(Value::string)
+    }
 }
 
 const BUILTINS: &[Builtin] = &[
@@ -115,6 +119,16 @@ const BUILTINS: &[Builtin] = &[
         name: "dice",
         args: 1,
         func: &|mut gfc| gfc.pop_roll().map(|r| Outcome::nat(r.die as i64)),
+    },
+    Builtin {
+        name: "print",
+        args: 1,
+        func: &|mut gfc| {
+            gfc.pop_string().map(|s| {
+                println!("{s}");
+                Outcome::new(Value::Empty)
+            })
+        },
     },
 ];
 
