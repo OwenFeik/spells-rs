@@ -40,8 +40,8 @@ impl Operator {
     pub fn precedence(&self) -> u8 {
         match self {
             Operator::Sentinel => 0,
-            Operator::Assign => 1,
-            Operator::Discard => 2,
+            Operator::Discard => 1,
+            Operator::Assign => 2,
             Operator::GreaterThan => 3,
             Operator::LessThan => 3,
             Operator::GreaterEqual => 3,

@@ -64,6 +64,10 @@ impl Ast {
         Self(Vec::new())
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub fn add(&mut self, expr: Node) -> usize {
         self.0.push(expr);
         self.0.len() - 1

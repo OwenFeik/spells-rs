@@ -205,6 +205,10 @@ impl Outcome {
         Self::new(Value::Natural(value))
     }
 
+    pub fn empty() -> Self {
+        Self::new(Value::Empty)
+    }
+
     pub fn resolved(self) -> Res<Self> {
         if matches!(self.value, Value::Roll(_)) {
             self.natural().map(|oc| oc.0)

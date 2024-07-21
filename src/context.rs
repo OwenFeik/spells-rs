@@ -2,11 +2,10 @@ use std::{collections::HashMap, fmt::Display, rc::Rc, sync::atomic::AtomicUsize}
 
 use crate::{
     ast::Ast,
-    builtins::DEFAULT_GLOBALS,
     err,
     eval::{check_argument_count, evaluate},
+    eval_tome,
     outcome::Outcome,
-    parse,
     value::Value,
     Res,
 };
@@ -86,14 +85,9 @@ impl Context {
             return;
         }
 
-        // Add default globals by evaluating them.
-        for definition in DEFAULT_GLOBALS {
-            if let Err(e) = self.eval(definition) {
-                panic!(
-                    "Failed to evaluate global: {} Definition: {}",
-                    e, definition
-                );
-            };
+        // Add default globals.
+        if let Err(e) = eval_tome(include_str!("tomes/default.tome"), self) {
+            panic!("Failed to evaluate default.tome: {}", e);
         }
 
         self.push_scope(); // Add user scope.
@@ -167,12 +161,6 @@ impl Context {
         }
     }
 
-    pub fn eval(&mut self, statement: &str) -> Res<()> {
-        let ast = parse(statement)?;
-        evaluate(&ast, self)?;
-        Ok(())
-    }
-
     pub fn dump_to_string(&self) -> Res<String> {
         let mut ret = String::new();
 
@@ -214,12 +202,14 @@ impl Default for Context {
 
 #[cfg(test)]
 mod test {
+    use crate::eval;
+
     use super::*;
 
     #[test]
     fn test_definition() {
         let mut context = Context::empty();
-        context.eval("func(x, y) = x + y").unwrap();
+        eval("func(x, y) = x + y", &mut context).unwrap();
         let func = context.get_function("func").unwrap();
         assert_eq!(func.body.render(), "x + y");
         assert_eq!(func.parameters, vec!["x".to_string(), "y".to_string()]);

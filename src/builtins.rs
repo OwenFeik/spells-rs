@@ -1,36 +1,5 @@
 use crate::{err, eval, outcome::Outcome, roll::Roll, value::Value, Res};
 
-pub const DEFAULT_GLOBALS: &[&str] = &[
-    "STRENGTH = 10",
-    "DEXTERITY = 10",
-    "CONSTITUTION = 10",
-    "INTELLIGENCE = 10",
-    "WISDOM = 10",
-    "CHARISMA = 10",
-    "modifier(stat) = floor((stat - 10) / 2)",
-    "STR() = modifier(STRENGTH)",
-    "DEX() = modifier(DEXTERITY)",
-    "CON() = modifier(CONSTITUTION)",
-    "INT() = modifier(INTELLIGENCE)",
-    "WIS() = modifier(WISDOM)",
-    "CHA() = modifier(CHARISMA)",
-    "LEVEL = 1",
-    "PROF() = floor((LEVEL - 1) / 4) + 2",
-    "EXPT() = PROF() * 2",
-    "WEALTH_CP = 0",
-    "spend_cp(cp) = WEALTH_CP = WEALTH_CP - cp",
-    "gain_cp(cp) = spend_cp(-cp)",
-    "spend_sp(sp) = spend_cp(sp * 10) / 10",
-    "gain_sp(sp) = spend_sp(-sp)",
-    "spend_ep(ep) = spend_cp(ep * 50) / 50",
-    "gain_ep(ep) = spend_ep(-ep)",
-    "spend_gp(gp) = spend_cp(gp * 100) / 100",
-    "gain_gp(gp) = spend_gp(-gp)",
-    "spend_pp(pp) = spend_cp(pp * 1000) / 1000",
-    "gain_pp(pp) = spend_pp(-pp)",
-    "avg(roll) = quantity(roll) * (dice(roll) + 1) / 2",
-];
-
 struct Builtin {
     name: &'static str,
     args: usize,
@@ -116,6 +85,25 @@ const BUILTINS: &[Builtin] = &[
         },
     },
     Builtin {
+        name: "set",
+        args: 3,
+        func: &|mut gfc| {
+            let index = gfc.pop_natural()?;
+            let mut list = gfc.pop_list()?;
+            let value = gfc.pop()?;
+
+            if index < 0 || index as usize >= list.len() {
+                Err(format!(
+                    "Index {index} of range for list of length {}.",
+                    list.len()
+                ))
+            } else {
+                list[index as usize] = value;
+                Ok(Outcome::new(Value::List(list)))
+            }
+        },
+    },
+    Builtin {
         name: "dice",
         args: 1,
         func: &|mut gfc| gfc.pop_roll().map(|r| Outcome::nat(r.die as i64)),
@@ -126,7 +114,7 @@ const BUILTINS: &[Builtin] = &[
         func: &|mut gfc| {
             gfc.pop_string().map(|s| {
                 println!("{s}");
-                Outcome::new(Value::Empty)
+                Outcome::empty()
             })
         },
     },

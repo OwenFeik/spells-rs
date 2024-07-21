@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::{context::Context, err, Res};
+use crate::{context::Context, err, eval_tome, Res};
 
 pub const SAVE_PATH_VAR: &str = "SAVE_PATH";
 const DEFAULT_SAVE_NAME: &str = "untitled";
@@ -100,10 +100,7 @@ pub fn load(at: SaveTarget) -> Res<(Context, String)> {
     let text = std::fs::read_to_string(&path)
         .map_err(|e| format!("Error loading from {}: {e}", path.display()))?;
     let mut context = Context::empty();
-    for statement in text.lines() {
-        context.eval(statement)?;
-    }
-
+    eval_tome(&text, &mut context)?;
     Ok((context, path.display().to_string()))
 }
 

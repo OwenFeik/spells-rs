@@ -35,7 +35,7 @@ fn define(
     };
 
     context.define_function(name, body, parameters);
-    Ok(Outcome::new(Value::Empty))
+    Ok(Outcome::empty())
 }
 
 fn assign(ast: &Ast, context: &mut Context, destination: usize, definition: usize) -> Res<Outcome> {
@@ -156,7 +156,11 @@ fn evaluate_node(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome>
 }
 
 pub fn evaluate(ast: &Ast, context: &mut Context) -> Res<Outcome> {
-    evaluate_node(ast, context, ast.start())
+    if ast.is_empty() {
+        Ok(Outcome::empty())
+    } else {
+        evaluate_node(ast, context, ast.start())
+    }
 }
 
 #[cfg(test)]
@@ -323,5 +327,23 @@ mod test {
             eval("1; 2", &mut Context::empty()).unwrap(),
             Outcome::nat(2)
         )
+    }
+
+    #[test]
+    fn test_discard_assignment() {
+        let context = &mut Context::empty();
+        assert_eq!(eval("a = 2; b = 3", context).unwrap(), Outcome::nat(3));
+        assert_eq!(context.get_variable("a"), Some(Value::Natural(2)));
+        assert_eq!(context.get_variable("b"), Some(Value::Natural(3)));
+    }
+
+    #[test]
+    fn test_multiple_statement_function() {
+        let context = &mut Context::empty();
+        assert_eq!(eval("a = 1; b = 2", context).unwrap(), Outcome::nat(2));
+        eval("incr() = a = a + 1; b = b + 1", context).unwrap();
+        eval("incr()", context).unwrap();
+        assert_eq!(context.get_variable("a").unwrap().natural().unwrap(), 2);
+        assert_eq!(context.get_variable("b").unwrap().natural().unwrap(), 3);
     }
 }

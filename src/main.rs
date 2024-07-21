@@ -38,6 +38,13 @@ fn eval(input: &str, context: &mut context::Context) -> Res<outcome::Outcome> {
     eval::evaluate(&parse(input)?, context).and_then(|oc| oc.resolved())
 }
 
+fn eval_tome(input: &str, context: &mut context::Context) -> Res<()> {
+    for statement in input.lines() {
+        eval(statement, context)?; // TODO should not be line-oriented
+    }
+    Ok(())
+}
+
 fn interpret(input: &str, context: &mut context::Context) {
     match eval(input, context) {
         Ok(outcome) => println!("{outcome}"),

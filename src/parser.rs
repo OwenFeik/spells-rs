@@ -49,6 +49,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse(mut self) -> Res<Ast> {
+        if self.input.is_empty() {
+            return Ok(self.ast);
+        }
+
         self.operators.push(Operator::Sentinel);
         self.expr()?;
         if self.input.is_empty() {
@@ -140,9 +144,9 @@ impl<'a> Parser<'a> {
 
     fn conditional(&mut self) -> Res<usize> {
         let cond = self.in_scope(Self::expr)?;
-        self.expect(Token::Identifier("then".into()))?;
+        self.expect(Token::identifier("then"))?;
         let then = self.in_scope(Self::expr)?;
-        let fail = if self.peek() == Some(&Token::Identifier("else".into())) {
+        let fail = if self.peek() == Some(&Token::identifier("else")) {
             self.next()?; // Toss else
             Some(self.in_scope(Self::expr)?)
         } else {

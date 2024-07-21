@@ -1,5 +1,7 @@
 use crate::{operator::Operator, Res};
 
+const COMMENT: char = '#';
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Identifier(String),
@@ -16,6 +18,10 @@ pub enum Token {
 }
 
 impl Token {
+    pub fn identifier<S: ToString>(identifier: S) -> Self {
+        Self::Identifier(identifier.to_string())
+    }
+
     fn from(c: char) -> Option<Self> {
         match c {
             ',' => Some(Self::Comma),
@@ -141,6 +147,10 @@ impl Token {
 
         Ok((Some(self), Self::from(c)))
     }
+
+    fn finish(self) -> Res<(Option<Self>, Option<Self>)> {
+        self.consume(' ')
+    }
 }
 
 fn extended(token: Token) -> Res<(Option<Token>, Option<Token>)> {
@@ -159,8 +169,21 @@ pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
 
     let mut current: Option<Token> = None;
+    let mut in_comment = false;
     for c in input.chars() {
-        if let Some(token) = current {
+        if c == COMMENT {
+            if let Some(current) = current {
+                if let (Some(token), _) = current.finish()? {
+                    tokens.push(token);
+                }
+            }
+            current = None;
+            in_comment = true;
+        } else if in_comment {
+            if c == '\n' {
+                in_comment = false;
+            }
+        } else if let Some(token) = current {
             let finished;
             (finished, current) = token.consume(c)?;
             if let Some(finished) = finished {
@@ -172,7 +195,7 @@ pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
     }
 
     if let Some(current) = current {
-        if let (Some(token), _) = current.consume(' ')? {
+        if let (Some(token), _) = current.finish()? {
             tokens.push(token);
         }
     }
@@ -372,5 +395,47 @@ mod test {
         for op in Operator::TOKENS {
             assert_eq!(tok_unwrap(op.str()), vec![Token::Operator(*op)]);
         }
+    }
+
+    #[test]
+    fn test_comment() {
+        assert_eq!(
+            tok_unwrap("2 + 3 # two plus three"),
+            vec![
+                Token::Natural(2),
+                Token::Operator(Operator::Add),
+                Token::Natural(3)
+            ]
+        )
+    }
+
+    #[test]
+    fn test_tokenise_multiline() {
+        assert_eq!(
+            tok_unwrap(
+                r#"
+                if 2 > 3 then
+                    print("wrong")
+                else
+                    print("right!")
+                "#
+            ),
+            vec![
+                Token::identifier("if"),
+                Token::Natural(2),
+                Token::Operator(Operator::GreaterThan),
+                Token::Natural(3),
+                Token::identifier("then"),
+                Token::identifier("print"),
+                Token::ParenOpen,
+                Token::String("wrong".into()),
+                Token::ParenClose,
+                Token::identifier("else"),
+                Token::identifier("print"),
+                Token::ParenOpen,
+                Token::String("right!".into()),
+                Token::ParenClose
+            ]
+        )
     }
 }

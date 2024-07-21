@@ -1,0 +1,43 @@
+# Character stats and modifiers
+_modifier(stat) = floor((stat - 10) / 2)
+STRENGTH = 10; STR() = _modifier(STRENGTH)
+DEXTERITY = 10; DEX() = _modifier(DEXTERITY)
+CONSTITUTION = 10; CON() = _modifier(CONSTITUTION)
+INTELLIGENCE = 10; INT() = _modifier(INTELLIGENCE)
+WISDOM = 10; WIS() = _modifier(WISDOM)
+CHARISMA = 10; CHA() = _modifier(CHARISMA)
+
+# Character level, calculations for proficiency and expertise
+LEVEL = 1
+PROF() = floor((LEVEL - 1) / 4) + 2
+EXPT() = PROF() * 2
+
+# Wealth stored in this list
+_cp = 0; _sp = 0; _gp = 0; _ep = 0; _pp = 0
+_use_electrum = false
+_total_wealth_cp() = _cp + _sp * 10 + _gp * 10 + _ep * 10 + _pp * 10
+spend_cp(cp) =
+    if _cp >= cp then
+        _cp = _cp - cp ; true
+    else if _total_wealth_cp() >= cp && spend_sp(1) then
+        _cp = _cp + 10 ; spend_cp(cp)
+    else
+        false
+spend_sp(sp) =
+    if _sp >= sp then
+        _sp = _sp - sp ; true
+    else # if spend_cp(10)
+        false 
+#         
+# WEALTH_CP = 0
+# spend_cp(cp) = WEALTH_CP = WEALTH_CP - cp
+# gain_cp(cp) = spend_cp(-cp)
+# spend_sp(sp) = spend_cp(sp * 10) / 10
+# gain_sp(sp) = spend_sp(-sp)
+# spend_ep(ep) = spend_cp(ep * 50) / 50
+# gain_ep(ep) = spend_ep(-ep)
+# spend_gp(gp) = spend_cp(gp * 100) / 100
+# gain_gp(gp) = spend_gp(-gp)
+# spend_pp(pp) = spend_cp(pp * 1000) / 1000
+# gain_pp(pp) = spend_pp(-pp)
+# avg(roll) = quantity(roll) * (dice(roll) + 1) / 2
