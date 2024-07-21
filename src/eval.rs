@@ -89,7 +89,8 @@ fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize
         let lhs_val = evaluate_node(ast, context, lhs)?;
         let rhs_val = evaluate_node(ast, context, rhs)?;
         match op {
-            Operator::Assign => err("Operator::Asssign doesn't match Operator::Assign."),
+            Operator::Assign => err("Operator::Assign doesn't match Operator::Assign."),
+            Operator::Discard => Ok(rhs_val),
             Operator::Add => lhs_val.add(rhs_val),
             Operator::Sub => lhs_val.sub(rhs_val),
             Operator::Mul => lhs_val.mul(rhs_val),
@@ -313,6 +314,14 @@ mod test {
                 .unwrap()
                 .to_string(),
             r#""abcdef""#
-        );
+        )
+    }
+
+    #[test]
+    fn test_discard() {
+        assert_eq!(
+            eval("1; 2", &mut Context::empty()).unwrap(),
+            Outcome::nat(2)
+        )
     }
 }

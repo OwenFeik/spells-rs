@@ -54,6 +54,7 @@ impl<'a> Parser<'a> {
         if self.input.is_empty() {
             Ok(self.ast)
         } else {
+            dbg!(self.input);
             err("Input not consumed.")
         }
     }
@@ -130,7 +131,7 @@ impl<'a> Parser<'a> {
         Ok(id)
     }
 
-    fn in_scope<F: FnOnce(&mut Self) -> Res<usize>>(&mut self, func: F) -> Res<usize> {
+    fn in_scope<T, F: FnOnce(&mut Self) -> Res<T>>(&mut self, func: F) -> Res<T> {
         self.push_scope();
         let ret = func(self);
         self.pop_scope();
@@ -150,7 +151,7 @@ impl<'a> Parser<'a> {
         Ok(self.push_operand(Node::If(cond, then, fail)))
     }
 
-    fn _list(&mut self) -> Res<usize> {
+    fn _list(&mut self) -> Res<Node> {
         let mut values = Vec::new();
         if !matches!(self.peek(), Some(Token::BracketClose)) {
             values.push(self.expr()?);
@@ -160,11 +161,12 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect(Token::BracketClose)?;
-        Ok(self.push_operand(Node::List(values)))
+        Ok(Node::List(values))
     }
 
     fn list(&mut self) -> Res<usize> {
-        self.in_scope(Self::_list)
+        let node = self.in_scope(Self::_list)?;
+        Ok(self.push_operand(node))
     }
 
     fn _call(&mut self, name: String) -> Res<usize> {
@@ -739,6 +741,20 @@ mod test {
                 Node::Value(Value::String("yes".into())),
                 Node::Value(Value::String("no".into())),
                 Node::If(4, 5, Some(6)),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_function_returning_list() {
+        check_exprs(
+            r#"p() = [print("a")]"#,
+            vec![
+                Node::Call("p".into(), Vec::new()),
+                Node::Value(Value::String("a".into())),
+                Node::Call("print".into(), vec![1]),
+                Node::List(vec![2]),
+                Node::Binary(0, Operator::Assign, 3),
             ],
         )
     }

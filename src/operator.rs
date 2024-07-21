@@ -2,6 +2,7 @@
 pub enum Operator {
     Sentinel,
     Assign,
+    Discard,
     Add,
     Sub,
     Mul,
@@ -23,6 +24,7 @@ impl Operator {
     // Operators which are produced context-free by the tokeniser.
     pub const TOKENS: &'static [Operator] = &[
         Operator::Assign,
+        Operator::Discard,
         Operator::Add,
         Operator::Sub,
         Operator::Mul,
@@ -39,21 +41,22 @@ impl Operator {
         match self {
             Operator::Sentinel => 0,
             Operator::Assign => 1,
-            Operator::GreaterThan => 2,
-            Operator::LessThan => 2,
-            Operator::GreaterEqual => 2,
-            Operator::LessEqual => 2,
-            Operator::Equal => 2,
-            Operator::Add => 3,
-            Operator::Sub => 3,
-            Operator::Mul => 4,
-            Operator::Div => 4,
-            Operator::Neg => 5,
-            Operator::Adv => 5,
-            Operator::DisAdv => 5,
-            Operator::Sort => 5,
-            Operator::Exp => 6,
-            Operator::Keep => 7,
+            Operator::Discard => 2,
+            Operator::GreaterThan => 3,
+            Operator::LessThan => 3,
+            Operator::GreaterEqual => 3,
+            Operator::LessEqual => 3,
+            Operator::Equal => 3,
+            Operator::Add => 4,
+            Operator::Sub => 4,
+            Operator::Mul => 5,
+            Operator::Div => 5,
+            Operator::Neg => 6,
+            Operator::Adv => 6,
+            Operator::DisAdv => 6,
+            Operator::Sort => 6,
+            Operator::Exp => 7,
+            Operator::Keep => 8,
         }
     }
 
@@ -61,6 +64,7 @@ impl Operator {
         match self {
             Operator::Sentinel => false,
             Operator::Assign => false,
+            Operator::Discard => true,
             Operator::Add => true,
             Operator::Sub => true,
             Operator::Mul => true,
@@ -83,6 +87,7 @@ impl Operator {
         match self {
             Operator::Sentinel => false,
             Operator::Assign => true,
+            Operator::Discard => true,
             Operator::Add => true,
             Operator::Sub => true,
             Operator::Mul => true,
@@ -127,6 +132,7 @@ impl Operator {
         match self {
             Operator::Sentinel => "@",
             Operator::Assign => "=",
+            Operator::Discard => ";",
             Operator::Add => "+",
             Operator::Sub => "-",
             Operator::Mul => "*",

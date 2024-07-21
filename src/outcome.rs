@@ -2,7 +2,7 @@ use std::fmt::{Display, Write};
 
 use crate::{roll::RollOutcome, value::Value, Res};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Outcome {
     pub value: Value,
     pub rolls: Vec<RollOutcome>,
