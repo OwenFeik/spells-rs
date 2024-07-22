@@ -48,19 +48,23 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse(mut self) -> Res<Ast> {
+    fn parse(self) -> Res<Ast> {
+        let (ast, unused_input) = self.parse_first()?;
+        if unused_input.is_empty() {
+            Ok(ast)
+        } else {
+            err("Input not consumed.")
+        }
+    }
+
+    fn parse_first(mut self) -> Res<(Ast, &'a [Token])> {
         if self.input.is_empty() {
-            return Ok(self.ast);
+            return Ok((self.ast, self.input));
         }
 
         self.operators.push(Operator::Sentinel);
         self.expr()?;
-        if self.input.is_empty() {
-            Ok(self.ast)
-        } else {
-            dbg!(self.input);
-            err("Input not consumed.")
-        }
+        Ok((self.ast, self.input))
     }
 
     fn expr(&mut self) -> Res<usize> {
@@ -264,6 +268,10 @@ impl<'a> Parser<'a> {
 
 pub fn parse(input: &[Token]) -> Res<Ast> {
     Parser::new(input).parse()
+}
+
+pub fn parse_first(input: &[Token]) -> Res<(Ast, &[Token])> {
+    Parser::new(input).parse_first()
 }
 
 #[cfg(test)]

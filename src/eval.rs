@@ -346,4 +346,18 @@ mod test {
         assert_eq!(context.get_variable("a").unwrap().natural().unwrap(), 2);
         assert_eq!(context.get_variable("b").unwrap().natural().unwrap(), 3);
     }
+
+    #[test]
+    fn test_multiline_statement() {
+        let mut context = &mut Context::empty();
+        eval(
+            r#"
+            if true then
+                a = 4
+            "#,
+            &mut context,
+        )
+        .unwrap();
+        assert_eq!(context.get_variable("a").unwrap(), Value::Natural(4));
+    }
 }
