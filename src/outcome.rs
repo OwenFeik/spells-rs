@@ -16,46 +16,30 @@ impl Outcome {
         }
     }
 
-    pub fn outcome(mut self) -> Res<(Self, RollOutcome)> {
-        let outcome = if let Value::Outcome(outcome) = &self.value {
-            outcome.clone()
-        } else {
+    fn resolve_for<T, F: Fn(Value) -> Res<T>>(mut self, f: F) -> Res<(Self, T)> {
+        if matches!(self.value, Value::Roll(_)) {
             let outcome = self.value.outcome()?;
             self.value = Value::Outcome(outcome.clone());
-            self.rolls.push(outcome.clone());
-            outcome
-        };
-        Ok((self, outcome))
+            self.rolls.push(outcome);
+        }
+        let value = f(self.value.clone())?;
+        Ok((self, value))
     }
 
     pub fn rolls(self) -> Res<(Self, Vec<u64>)> {
-        if matches!(self.value, Value::Roll(_)) {
-            let (val, outcome) = self.outcome()?;
-            Ok((val, Value::Outcome(outcome).rolls()?))
-        } else {
-            let values = self.value.clone().rolls()?;
-            Ok((self, values))
-        }
+        self.resolve_for(Value::rolls)
     }
 
     pub fn natural(self) -> Res<(Self, i64)> {
-        if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
-            let (this, outcome) = self.outcome()?;
-            Ok((this, outcome.result as i64))
-        } else {
-            let value = self.value.clone().natural()?;
-            Ok((self, value))
-        }
+        self.resolve_for(Value::natural)
     }
 
     pub fn decimal(self) -> Res<(Self, f64)> {
-        if matches!(self.value, Value::Roll(_) | Value::Outcome(_)) {
-            let (this, outcome) = self.outcome()?;
-            Ok((this, outcome.result as f64))
-        } else {
-            let value = self.value.clone().decimal()?;
-            Ok((self, value))
-        }
+        self.resolve_for(Value::decimal)
+    }
+
+    pub fn bool(self) -> Res<(Self, bool)> {
+        self.resolve_for(Value::bool)
     }
 
     fn arithmetic<F: Fn(f64, f64) -> f64>(self, other: Outcome, f: F) -> Res<Outcome> {
@@ -71,6 +55,16 @@ impl Outcome {
     fn numeric_comparison<F: Fn(f64, f64) -> bool>(self, other: Outcome, f: F) -> Res<Outcome> {
         let (mut this, lhs) = self.decimal()?;
         let (mut that, rhs) = other.decimal()?;
+        this.rolls.append(&mut that.rolls);
+        Ok(Outcome {
+            value: Value::Bool(f(lhs, rhs)),
+            rolls: this.rolls,
+        })
+    }
+
+    fn boolean<F: Fn(bool, bool) -> bool>(self, other: Outcome, f: F) -> Res<Outcome> {
+        let (mut this, lhs) = self.bool()?;
+        let (mut that, rhs) = other.bool()?;
         this.rolls.append(&mut that.rolls);
         Ok(Outcome {
             value: Value::Bool(f(lhs, rhs)),
@@ -199,6 +193,19 @@ impl Outcome {
             value: Value::Bool(self.value == other.value),
             rolls: self.rolls,
         })
+    }
+
+    pub fn and(self, other: Self) -> Res<Self> {
+        self.boolean(other, |a, b| a && b)
+    }
+
+    pub fn or(self, other: Self) -> Res<Self> {
+        self.boolean(other, |a, b| a || b)
+    }
+
+    pub fn not(mut self) -> Res<Self> {
+        self.value = Value::Bool(!self.value.bool()?);
+        Ok(self)
     }
 
     pub fn nat(value: i64) -> Self {

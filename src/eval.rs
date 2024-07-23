@@ -91,6 +91,8 @@ fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize
         match op {
             Operator::Assign => err("Operator::Assign doesn't match Operator::Assign."),
             Operator::Discard => Ok(rhs_val),
+            Operator::And => lhs_val.and(rhs_val),
+            Operator::Or => lhs_val.or(rhs_val),
             Operator::Add => lhs_val.add(rhs_val),
             Operator::Sub => lhs_val.sub(rhs_val),
             Operator::Mul => lhs_val.mul(rhs_val),
@@ -103,6 +105,7 @@ fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize
             Operator::GreaterEqual => lhs_val.greater_equal(rhs_val),
             Operator::LessEqual => lhs_val.less_equal(rhs_val),
             Operator::Sentinel
+            | Operator::Not
             | Operator::Neg
             | Operator::Adv
             | Operator::DisAdv
@@ -114,6 +117,7 @@ fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize
 fn unary(ast: &Ast, context: &mut Context, op: Operator, arg: usize) -> Res<Outcome> {
     let val = evaluate_node(ast, context, arg)?;
     match op {
+        Operator::Not => val.not(),
         Operator::Neg => val.neg(),
         Operator::Adv => val.adv(),
         Operator::DisAdv => val.disadv(),

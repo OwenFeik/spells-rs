@@ -121,7 +121,13 @@ impl<'a> Parser<'a> {
             Token::BracketOpen => self.list(),
             Token::BracketClose => err("] unexpected."),
             Token::Comma => err(", unexpected."),
-            Token::Operator(Operator::Sub) | Token::Operator(Operator::Neg) => {
+            Token::Operator(op) if op.is_unary_prefix() => {
+                self.push_operator(op);
+                self.term()
+            }
+            Token::Operator(Operator::Sub) => {
+                // N.B. sub / neg can be ambiguous, so allow sub in place of
+                // neg as a unary prefix.
                 self.push_operator(Operator::Neg);
                 self.term()
             }
@@ -767,6 +773,23 @@ mod test {
                 Node::Call("print".into(), vec![1]),
                 Node::List(vec![2]),
                 Node::Binary(0, Operator::Assign, 3),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_not_operator() {
+        check_exprs(
+            "if !a then b = b + 1",
+            vec![
+                Node::Identifier("a".into()),
+                Node::Unary(0, Operator::Not),
+                Node::Identifier("b".into()),
+                Node::Identifier("b".into()),
+                Node::Value(Value::Natural(1)),
+                Node::Binary(3, Operator::Add, 4),
+                Node::Binary(2, Operator::Assign, 5),
+                Node::If(1, 6, None),
             ],
         )
     }

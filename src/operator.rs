@@ -20,6 +20,7 @@ pub enum Operator {
     LessEqual,
     And,
     Or,
+    Not,
 }
 
 impl Operator {
@@ -39,6 +40,7 @@ impl Operator {
         Operator::LessEqual,
         Operator::And,
         Operator::Or,
+        Operator::Not,
     ];
 
     pub fn precedence(&self) -> u8 {
@@ -57,6 +59,7 @@ impl Operator {
             Operator::Sub => 5,
             Operator::Mul => 6,
             Operator::Div => 6,
+            Operator::Not => 7,
             Operator::Neg => 7,
             Operator::Adv => 7,
             Operator::DisAdv => 7,
@@ -73,6 +76,7 @@ impl Operator {
             Operator::Discard => true,
             Operator::And => true,
             Operator::Or => true,
+            Operator::Not => false,
             Operator::Add => true,
             Operator::Sub => true,
             Operator::Mul => true,
@@ -98,6 +102,7 @@ impl Operator {
             Operator::Discard => true,
             Operator::And => true,
             Operator::Or => true,
+            Operator::Not => false,
             Operator::Add => true,
             Operator::Sub => true,
             Operator::Mul => true,
@@ -119,8 +124,12 @@ impl Operator {
     pub fn is_unary(&self) -> bool {
         matches!(
             self,
-            Operator::Neg | Operator::Adv | Operator::DisAdv | Operator::Sort
+            Operator::Not | Operator::Neg | Operator::Adv | Operator::DisAdv | Operator::Sort
         )
+    }
+
+    pub fn is_unary_prefix(&self) -> bool {
+        matches!(self, Operator::Not | Operator::Neg)
     }
 
     pub fn is_unary_postfix(&self) -> bool {
@@ -143,6 +152,9 @@ impl Operator {
             Operator::Sentinel => "@",
             Operator::Assign => "=",
             Operator::Discard => ";",
+            Operator::And => "&",
+            Operator::Or => "|",
+            Operator::Not => "!",
             Operator::Add => "+",
             Operator::Sub => "-",
             Operator::Mul => "*",
