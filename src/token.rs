@@ -1,9 +1,9 @@
-use crate::{operator::Operator, Res};
+use crate::{err, operator::Operator, Res};
 
 const COMMENT: char = '#';
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Token {
+pub enum Tok {
     Identifier(String),
     Natural(u64),
     Decimal(String),
@@ -17,32 +17,19 @@ pub enum Token {
     Comma,
 }
 
+struct Token {
+    ty: Tok,
+    line: usize,
+    col: usize,
+}
+
 impl Token {
-    pub fn identifier<S: ToString>(identifier: S) -> Self {
-        Self::Identifier(identifier.to_string())
+    fn new(ty: Tok, line: usize, col: usize) -> Self {
+        Self { ty, line, col }
     }
 
-    fn from(c: char) -> Option<Self> {
-        match c {
-            ',' => Some(Self::Comma),
-            '(' => Some(Self::ParenOpen),
-            ')' => Some(Self::ParenClose),
-            '[' => Some(Self::BracketOpen),
-            ']' => Some(Self::BracketClose),
-            '"' => Some(Self::String(String::new())),
-            '_' => Some(Self::Identifier(String::from("_"))),
-            '.' => Some(Self::Decimal(String::from("."))),
-            _ if c.is_numeric() => c.to_digit(10).map(|v| Self::Natural(v as u64)),
-            _ if c.is_alphabetic() => Some(Self::Identifier(String::from(c))),
-            _ => {
-                for op in Operator::TOKENS {
-                    if op.str().starts_with(c) {
-                        return Some(Self::Operator(*op));
-                    }
-                }
-                None
-            }
-        }
+    pub fn identifier<S: ToString>(identifier: S) -> Self {
+        Self::Identifier(identifier.to_string())
     }
 
     fn string(&self) -> String {
@@ -165,7 +152,67 @@ fn finished_and(completed: Token, next: Token) -> Res<(Option<Token>, Option<Tok
     Ok((Some(completed), Some(next)))
 }
 
+fn read_string(input: &[char], start: usize) -> Res<(usize, Tok)> {
+    debug_assert!(input[start] == '"');
+    let mut s = String::new();
+    let mut i = start + 1;
+    let mut escaped = false;
+    while let Some(c) = input.get(i).copied() {
+        i = i + 1;
+        match c {
+            '\\' => {
+                if escaped {
+                    s.push('\\');
+                } else {
+                    escaped = true;
+                }
+            }
+            '"' => {
+                if escaped {
+                    s.push('"');
+                } else {
+                    return Ok((i - start, Tok::String(s)));
+                }
+            }
+            'n' if escaped => {
+                s.push('\n');
+            }
+            't' if escaped => {
+                s.push('\t');
+            }
+            _ => s.push(c),
+        }
+    }
+    return err("Unterminated string.");
+}
+
+fn read_token(input: &[char], start: usize) -> Res<(usize, Tok)> {
+    Ok(match input.get(start) {
+        None => return err("Input ended unexpectedly."),
+        Some(',') => (1, Tok::Comma),
+        Some('(') => (1, Tok::ParenOpen),
+        Some(')') => (1, Tok::ParenClose),
+        Some('[') => (1, Tok::BracketOpen),
+        Some(']') => (1, Tok::BracketClose),
+        Some('"') => read_string(input, start),
+        Some('_') => Some(Self::Identifier(String::from("_"))),
+        Some('.') => Some(Self::Decimal(String::from("."))),
+        Some(c) if c.is_numeric() => c.to_digit(10).map(|v| Self::Natural(v as u64)),
+        Some(c) if c.is_alphabetic() => Some(Self::Identifier(String::from(c))),
+        Some(c) => {
+            for op in Operator::TOKENS {
+                if op.str().starts_with(c) {
+                    return Some(Self::Operator(*op));
+                }
+            }
+            None
+        }
+    })
+}
+
 pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
+    let chars: Vec<char> = input.chars().collect();
+
     let mut tokens = Vec::new();
 
     let mut current: Option<Token> = None;

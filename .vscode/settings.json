@@ -1,4 +1,7 @@
 {
     "editor.formatOnSave": true,
-    "nixEnvSelector.nixFile": "${workspaceRoot}/shell.nix"
+    "nixEnvSelector.nixFile": "${workspaceRoot}/shell.nix",
+    "[rust]": {
+        "editor.formatOnSave": true
+    }
 }
