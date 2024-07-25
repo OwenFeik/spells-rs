@@ -2,6 +2,8 @@
 
 * Add line and column information to tokens, eventually AST nodes.
 * Coin implementation bi-recurses infinitely if trying to break a larger coin.
+* `d` as in roll literals could just be an operator creating a roll from two
+    ints.
 
 # Trackers
 

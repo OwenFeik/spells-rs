@@ -6,7 +6,7 @@ const COMMENT: char = '#';
 pub enum Tok {
     Identifier(String),
     Natural(u64),
-    Decimal(String),
+    Decimal(f64),
     Roll(u64, u64),
     Operator(Operator),
     String(String),
@@ -17,146 +17,31 @@ pub enum Tok {
     Comma,
 }
 
-struct Token {
-    ty: Tok,
+impl Tok {
+    pub fn identifier<S: ToString>(identifier: S) -> Self {
+        Self::Identifier(identifier.to_string())
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Token {
+    pub tok: Tok,
     line: usize,
     col: usize,
 }
 
 impl Token {
-    fn new(ty: Tok, line: usize, col: usize) -> Self {
-        Self { ty, line, col }
-    }
-
-    pub fn identifier<S: ToString>(identifier: S) -> Self {
-        Self::Identifier(identifier.to_string())
-    }
-
-    fn string(&self) -> String {
-        match self {
-            Token::Identifier(name) => name.clone(),
-            Token::Natural(num) => num.to_string(),
-            Token::Decimal(num) => num.to_string(),
-            Token::Roll(q, d) => format!("{q}d{d}"),
-            Token::String(s) => format!("\"{}\"", s.clone()),
-            Token::ParenOpen => String::from("("),
-            Token::ParenClose => String::from(")"),
-            Token::BracketOpen => String::from("["),
-            Token::BracketClose => String::from("]"),
-            Token::Comma => String::from(","),
-            Token::Operator(op) => op.str().to_owned(),
-        }
-    }
-
-    fn consume(self, c: char) -> Res<(Option<Self>, Option<Self>)> {
-        if let Token::String(mut val) = self {
-            return match c {
-                '"' => {
-                    if val.ends_with('\\') {
-                        val.truncate(val.len() - 1);
-                        val.push('"');
-                        extended(Self::String(val))
-                    } else {
-                        finished(Self::String(val))
-                    }
-                }
-                _ => {
-                    val.push(c);
-                    extended(Self::String(val))
-                }
-            };
-        }
-
-        if let Some(n) = c.to_digit(10) {
-            let n = n as u64;
-            match self {
-                Self::Identifier(d) if d == "d" => {
-                    return extended(Self::Roll(1, n));
-                }
-                Self::Identifier(mut name) => {
-                    name.push(c);
-                    return extended(Self::Identifier(name));
-                }
-                Self::Natural(v) => return extended(Self::Natural(v * 10 + n)),
-                Self::Roll(q, s) => return extended(Self::Roll(q, s * 10 + n)),
-                Self::Operator(Operator::DisAdv) => return extended(Self::Roll(1, n)),
-                Self::Decimal(mut text) => {
-                    text.push(c);
-                    return extended(Self::Decimal(text));
-                }
-                _ => {}
-            }
-        }
-
-        if c.is_alphabetic() || c == '_' {
-            match self {
-                Self::Natural(v) if c == 'd' => return Ok((None, Some(Self::Roll(v, 0)))),
-                Self::Identifier(mut name) => {
-                    name.push(c);
-                    return extended(Self::Identifier(name));
-                }
-                Self::Roll(..) if c == 'a' || c == 'd' || c == 'k' || c == 's' => {
-                    return match c {
-                        'a' => finished_and(self, Self::Operator(Operator::Adv)),
-                        'd' => finished_and(self, Self::Operator(Operator::DisAdv)),
-                        'k' => finished_and(self, Self::Operator(Operator::Keep)),
-                        _ => finished_and(self, Self::Operator(Operator::Sort)),
-                    }
-                }
-                _ if self.string().chars().all(char::is_alphanumeric) => {
-                    return extended(Self::Identifier(format!("{}{}", self.string(), c)));
-                }
-                _ => {}
-            }
-        }
-
-        if c == '.' {
-            return match self {
-                Self::Natural(v) => extended(Self::Decimal(format!("{v}."))),
-                _ => finished_and(self, Self::Decimal(".".to_string())),
-            };
-        }
-
-        if c == '=' {
-            match self {
-                Self::Operator(Operator::Assign) => {
-                    return finished(Token::Operator(Operator::Equal));
-                }
-                Self::Operator(Operator::GreaterThan) => {
-                    return finished(Token::Operator(Operator::GreaterEqual));
-                }
-                Self::Operator(Operator::LessThan) => {
-                    return finished(Token::Operator(Operator::LessEqual));
-                }
-                _ => {}
-            }
-        }
-
-        Ok((Some(self), Self::from(c)))
-    }
-
-    fn finish(self) -> Res<(Option<Self>, Option<Self>)> {
-        self.consume(' ')
+    fn new(tok: Tok, line: usize, col: usize) -> Self {
+        Self { tok, line, col }
     }
 }
 
-fn extended(token: Token) -> Res<(Option<Token>, Option<Token>)> {
-    Ok((None, Some(token)))
-}
+fn read_string(input: &[char]) -> Res<(usize, Tok)> {
+    debug_assert!(input[0] == '"');
 
-fn finished(token: Token) -> Res<(Option<Token>, Option<Token>)> {
-    Ok((Some(token), None))
-}
-
-fn finished_and(completed: Token, next: Token) -> Res<(Option<Token>, Option<Token>)> {
-    Ok((Some(completed), Some(next)))
-}
-
-fn read_string(input: &[char], start: usize) -> Res<(usize, Tok)> {
-    debug_assert!(input[start] == '"');
     let mut s = String::new();
-    let mut i = start + 1;
     let mut escaped = false;
+    let mut i = 0;
     while let Some(c) = input.get(i).copied() {
         i = i + 1;
         match c {
@@ -171,7 +56,7 @@ fn read_string(input: &[char], start: usize) -> Res<(usize, Tok)> {
                 if escaped {
                     s.push('"');
                 } else {
-                    return Ok((i - start, Tok::String(s)));
+                    return Ok((i, Tok::String(s)));
                 }
             }
             'n' if escaped => {
@@ -180,70 +65,153 @@ fn read_string(input: &[char], start: usize) -> Res<(usize, Tok)> {
             't' if escaped => {
                 s.push('\t');
             }
+            '\n' => {
+                return err("Strings must be single line.");
+            }
             _ => s.push(c),
         }
     }
     return err("Unterminated string.");
 }
 
-fn read_token(input: &[char], start: usize) -> Res<(usize, Tok)> {
-    Ok(match input.get(start) {
-        None => return err("Input ended unexpectedly."),
-        Some(',') => (1, Tok::Comma),
-        Some('(') => (1, Tok::ParenOpen),
-        Some(')') => (1, Tok::ParenClose),
-        Some('[') => (1, Tok::BracketOpen),
-        Some(']') => (1, Tok::BracketClose),
-        Some('"') => read_string(input, start),
-        Some('_') => Some(Self::Identifier(String::from("_"))),
-        Some('.') => Some(Self::Decimal(String::from("."))),
-        Some(c) if c.is_numeric() => c.to_digit(10).map(|v| Self::Natural(v as u64)),
-        Some(c) if c.is_alphabetic() => Some(Self::Identifier(String::from(c))),
-        Some(c) => {
-            for op in Operator::TOKENS {
-                if op.str().starts_with(c) {
-                    return Some(Self::Operator(*op));
+fn read_number(input: &[char]) -> Res<(usize, Tok)> {
+    debug_assert!(input[0].is_numeric());
+
+    let mut s = String::new();
+    let mut is_decimal = false;
+    let mut is_roll = false;
+    let mut i = 0;
+    while let Some(c) = input.get(i).copied() {
+        i = i + 1;
+        match c {
+            '.' => {
+                s.push('.');
+                if is_decimal || is_roll {
+                    return Err(format!("Invalid literal: {s}"));
+                } else {
+                    is_decimal = true;
                 }
             }
-            None
+            'd' => {
+                s.push('d');
+                if is_roll || is_decimal {
+                    return Err(format!("Invalid literal: {s}"));
+                } else {
+                    is_roll = true;
+                }
+            }
+            _ if c.is_numeric() => {
+                s.push(c);
+            }
+            _ => break,
         }
-    })
+    }
+
+    let tok = if is_decimal {
+        Tok::Decimal(s.parse::<f64>().map_err(|e| e.to_string())?)
+    } else if is_roll {
+        if let Some((q, d)) = s.split_once('d') {
+            let q = if q.is_empty() {
+                1
+            } else {
+                q.parse::<u64>().map_err(|e| e.to_string())?
+            };
+            let d = d.parse::<u64>().map_err(|e| e.to_string())?;
+            Tok::Roll(q, d)
+        } else {
+            return Err(format!("Failed to parse roll literal: {s}"));
+        }
+    } else {
+        Tok::Natural(s.parse::<u64>().map_err(|e| e.to_string())?)
+    };
+    Ok((s.len(), tok))
+}
+
+fn read_identifier(input: &[char]) -> Res<(usize, Tok)> {
+    debug_assert!(input[0] == '_' || input[0].is_alphabetic());
+
+    let mut s = String::new();
+    for &c in input {
+        if c == '_' || c.is_alphabetic() || (!s.is_empty() && c.is_numeric()) {
+            s.push(c);
+        } else {
+            break;
+        }
+    }
+
+    let chars = s.chars().collect::<Vec<char>>();
+    let schars: &[char] = chars.as_slice();
+    for op in Operator::KEYWODRS {
+        if schars == op.chars() {
+            return Ok((s.len(), Tok::Operator(*op)));
+        }
+    }
+    Ok((s.len(), Tok::Identifier(s)))
+}
+
+fn read_token(input: &[char]) -> Res<(usize, Tok)> {
+    for op in Operator::TOKENS {
+        if input.starts_with(op.chars()) {
+            return Ok((op.chars().len(), Tok::Operator(*op)));
+        }
+    }
+
+    match input.get(0) {
+        None => err("Input ended unexpectedly."),
+        Some(',') => Ok((1, Tok::Comma)),
+        Some('(') => Ok((1, Tok::ParenOpen)),
+        Some(')') => Ok((1, Tok::ParenClose)),
+        Some('[') => Ok((1, Tok::BracketOpen)),
+        Some(']') => Ok((1, Tok::BracketClose)),
+        Some('"') => read_string(input),
+        Some('.') => read_number(input),
+        Some(c) if c.is_numeric() => read_number(input),
+        Some('_') => read_identifier(input),
+        Some(c) if c.is_alphabetic() => read_identifier(input),
+        Some(c) => Err(format!("{c} unexpected")),
+    }
+}
+
+fn read_comment(input: &[char]) -> usize {
+    debug_assert!(input[0] == COMMENT);
+    let mut len = 0;
+    for &c in input {
+        len += 1;
+        if c == '\n' {
+            return len;
+        }
+    }
+    return len;
 }
 
 pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
     let chars: Vec<char> = input.chars().collect();
 
+    let mut input: &[char] = chars.as_slice();
     let mut tokens = Vec::new();
-
-    let mut current: Option<Token> = None;
-    let mut in_comment = false;
-    for c in input.chars() {
-        if c == COMMENT {
-            if let Some(current) = current {
-                if let (Some(token), _) = current.finish()? {
-                    tokens.push(token);
-                }
+    let mut line = 1;
+    let mut col = 0;
+    while !input.is_empty() {
+        col += 1;
+        match input[0] {
+            ' ' | '\t' => input = &input[1..],
+            '\n' => {
+                line += 1;
+                col = 0;
+                input = &input[1..];
             }
-            current = None;
-            in_comment = true;
-        } else if in_comment {
-            if c == '\n' {
-                in_comment = false;
+            '#' => {
+                let len = read_comment(input);
+                line += 1;
+                col = 0;
+                input = &input[len..];
             }
-        } else if let Some(token) = current {
-            let finished;
-            (finished, current) = token.consume(c)?;
-            if let Some(finished) = finished {
-                tokens.push(finished);
+            _ => {
+                let (len, tok) = read_token(input)?;
+                col += len;
+                input = &input[len..];
+                tokens.push(Token::new(tok, line, col));
             }
-        } else {
-            current = Token::from(c);
-        }
-    }
-
-    if let Some(current) = current {
-        if let (Some(token), _) = current.finish()? {
-            tokens.push(token);
         }
     }
 
@@ -256,19 +224,23 @@ mod test {
 
     use super::*;
 
-    fn tok_unwrap(input: &str) -> Vec<Token> {
-        tokenise(input).unwrap()
+    fn tok_unwrap(input: &str) -> Vec<Tok> {
+        tokenise(input)
+            .unwrap()
+            .into_iter()
+            .map(|token| token.tok)
+            .collect()
     }
 
     #[test]
     fn test_tokenise_roll() {
-        assert_eq!(tok_unwrap("1d4"), vec![Token::Roll(1, 4)]);
-        assert_eq!(tok_unwrap("d4"), vec![Token::Roll(1, 4)]);
-        assert_eq!(tok_unwrap("8d8"), vec![Token::Roll(8, 8)]);
-        assert_eq!(tok_unwrap("d20"), vec![Token::Roll(1, 20)]);
+        assert_eq!(tok_unwrap("1d4"), vec![Tok::Roll(1, 4)]);
+        assert_eq!(tok_unwrap("d4"), vec![Tok::Roll(1, 4)]);
+        assert_eq!(tok_unwrap("8d8"), vec![Tok::Roll(8, 8)]);
+        assert_eq!(tok_unwrap("d20"), vec![Tok::Roll(1, 20)]);
         assert_eq!(
             tok_unwrap("d20 d20"),
-            vec![Token::Roll(1, 20), Token::Roll(1, 20)]
+            vec![Tok::Roll(1, 20), Tok::Roll(1, 20)]
         );
     }
 
@@ -277,25 +249,23 @@ mod test {
         assert_eq!(
             tok_unwrap("+ - * / ^"),
             vec![
-                Token::Operator(Operator::Add),
-                Token::Operator(Operator::Sub),
-                Token::Operator(Operator::Mul),
-                Token::Operator(Operator::Div),
-                Token::Operator(Operator::Exp)
+                Tok::Operator(Operator::Add),
+                Tok::Operator(Operator::Sub),
+                Tok::Operator(Operator::Mul),
+                Tok::Operator(Operator::Div),
+                Tok::Operator(Operator::Exp)
             ]
         );
         assert_eq!(
-            tok_unwrap("d4a d8d 4d6k4 d8s"),
+            tok_unwrap("d4a d8d 4d6k4"),
             vec![
-                Token::Roll(1, 4),
-                Token::Operator(Operator::Adv),
-                Token::Roll(1, 8),
-                Token::Operator(Operator::DisAdv),
-                Token::Roll(4, 6),
-                Token::Operator(Operator::Keep),
-                Token::Natural(4),
-                Token::Roll(1, 8),
-                Token::Operator(Operator::Sort)
+                Tok::Roll(1, 4),
+                Tok::Operator(Operator::Adv),
+                Tok::Roll(1, 8),
+                Tok::Operator(Operator::DisAdv),
+                Tok::Roll(4, 6),
+                Tok::Operator(Operator::Keep),
+                Tok::Natural(4),
             ]
         );
     }
@@ -305,17 +275,17 @@ mod test {
         assert_eq!(
             tok_unwrap("(d4 * 3) + (8d8k5)"),
             vec![
-                Token::ParenOpen,
-                Token::Roll(1, 4),
-                Token::Operator(Operator::Mul),
-                Token::Natural(3),
-                Token::ParenClose,
-                Token::Operator(Operator::Add),
-                Token::ParenOpen,
-                Token::Roll(8, 8),
-                Token::Operator(Operator::Keep),
-                Token::Natural(5),
-                Token::ParenClose
+                Tok::ParenOpen,
+                Tok::Roll(1, 4),
+                Tok::Operator(Operator::Mul),
+                Tok::Natural(3),
+                Tok::ParenClose,
+                Tok::Operator(Operator::Add),
+                Tok::ParenOpen,
+                Tok::Roll(8, 8),
+                Tok::Operator(Operator::Keep),
+                Tok::Natural(5),
+                Tok::ParenClose
             ]
         )
     }
@@ -325,13 +295,13 @@ mod test {
         assert_eq!(
             tok_unwrap("d20 + PROF + STR + 1"),
             vec![
-                Token::Roll(1, 20),
-                Token::Operator(Operator::Add),
-                Token::Identifier("PROF".to_string()),
-                Token::Operator(Operator::Add),
-                Token::Identifier("STR".to_string()),
-                Token::Operator(Operator::Add),
-                Token::Natural(1)
+                Tok::Roll(1, 20),
+                Tok::Operator(Operator::Add),
+                Tok::Identifier("PROF".to_string()),
+                Tok::Operator(Operator::Add),
+                Tok::Identifier("STR".to_string()),
+                Tok::Operator(Operator::Add),
+                Tok::Natural(1)
             ]
         )
     }
@@ -341,14 +311,14 @@ mod test {
         assert_eq!(
             tok_unwrap("d20d dword d aword a d20a"),
             vec![
-                Token::Roll(1, 20),
-                Token::Operator(Operator::DisAdv),
-                Token::Identifier("dword".to_string()),
-                Token::Identifier("d".to_string()),
-                Token::Identifier("aword".to_string()),
-                Token::Identifier("a".to_string()),
-                Token::Roll(1, 20),
-                Token::Operator(Operator::Adv),
+                Tok::Roll(1, 20),
+                Tok::Operator(Operator::DisAdv),
+                Tok::Identifier("dword".to_string()),
+                Tok::Identifier("d".to_string()),
+                Tok::Identifier("aword".to_string()),
+                Tok::Identifier("a".to_string()),
+                Tok::Roll(1, 20),
+                Tok::Operator(Operator::Adv),
             ]
         )
     }
@@ -358,22 +328,22 @@ mod test {
         assert_eq!(
             tok_unwrap("function(arg1, 3 + 2, arg2, (2 ^ 3))"),
             vec![
-                Token::Identifier("function".into()),
-                Token::ParenOpen,
-                Token::Identifier("arg1".into()),
-                Token::Comma,
-                Token::Natural(3),
-                Token::Operator(Operator::Add),
-                Token::Natural(2),
-                Token::Comma,
-                Token::Identifier("arg2".into()),
-                Token::Comma,
-                Token::ParenOpen,
-                Token::Natural(2),
-                Token::Operator(Operator::Exp),
-                Token::Natural(3),
-                Token::ParenClose,
-                Token::ParenClose,
+                Tok::Identifier("function".into()),
+                Tok::ParenOpen,
+                Tok::Identifier("arg1".into()),
+                Tok::Comma,
+                Tok::Natural(3),
+                Tok::Operator(Operator::Add),
+                Tok::Natural(2),
+                Tok::Comma,
+                Tok::Identifier("arg2".into()),
+                Tok::Comma,
+                Tok::ParenOpen,
+                Tok::Natural(2),
+                Tok::Operator(Operator::Exp),
+                Tok::Natural(3),
+                Tok::ParenClose,
+                Tok::ParenClose,
             ]
         )
     }
@@ -383,13 +353,13 @@ mod test {
         assert_eq!(
             tok_unwrap("fn() = var = 2"),
             vec![
-                Token::Identifier("fn".into()),
-                Token::ParenOpen,
-                Token::ParenClose,
-                Token::Operator(Operator::Assign),
-                Token::Identifier("var".into()),
-                Token::Operator(Operator::Assign),
-                Token::Natural(2)
+                Tok::Identifier("fn".into()),
+                Tok::ParenOpen,
+                Tok::ParenClose,
+                Tok::Operator(Operator::Assign),
+                Tok::Identifier("var".into()),
+                Tok::Operator(Operator::Assign),
+                Tok::Natural(2)
             ]
         )
     }
@@ -398,7 +368,7 @@ mod test {
     fn test_tokenise_underscore_identifier() {
         assert_eq!(
             tok_unwrap("underscore_name"),
-            vec![Token::Identifier("underscore_name".into())],
+            vec![Tok::Identifier("underscore_name".into())],
         )
     }
 
@@ -407,21 +377,18 @@ mod test {
         assert_eq!(
             tok_unwrap(r#"var = "string1" + "string2""#),
             vec![
-                Token::Identifier("var".into()),
-                Token::Operator(Operator::Assign),
-                Token::String("string1".into()),
-                Token::Operator(Operator::Add),
-                Token::String("string2".into())
+                Tok::Identifier("var".into()),
+                Tok::Operator(Operator::Assign),
+                Tok::String("string1".into()),
+                Tok::Operator(Operator::Add),
+                Tok::String("string2".into())
             ]
         )
     }
 
     #[test]
     fn test_tokenise_decimal() {
-        assert_eq!(
-            tok_unwrap("3.14159"),
-            vec![Token::Decimal("3.14159".into())]
-        )
+        assert_eq!(tok_unwrap("3.14159"), vec![Tok::Decimal(3.14159)])
     }
 
     #[test]
@@ -429,10 +396,10 @@ mod test {
         assert_eq!(
             tok_unwrap("floor(2.72)"),
             vec![
-                Token::Identifier("floor".into()),
-                Token::ParenOpen,
-                Token::Decimal("2.72".into()),
-                Token::ParenClose
+                Tok::identifier("floor"),
+                Tok::ParenOpen,
+                Tok::Decimal(2.72),
+                Tok::ParenClose
             ]
         )
     }
@@ -440,7 +407,7 @@ mod test {
     #[test]
     fn test_tokenise_all_ops() {
         for op in Operator::TOKENS {
-            assert_eq!(tok_unwrap(op.str()), vec![Token::Operator(*op)]);
+            assert_eq!(read_token(op.chars()).unwrap().1, Tok::Operator(*op));
         }
     }
 
@@ -449,9 +416,9 @@ mod test {
         assert_eq!(
             tok_unwrap("2 + 3 # two plus three"),
             vec![
-                Token::Natural(2),
-                Token::Operator(Operator::Add),
-                Token::Natural(3)
+                Tok::Natural(2),
+                Tok::Operator(Operator::Add),
+                Tok::Natural(3)
             ]
         )
     }
@@ -459,29 +426,30 @@ mod test {
     #[test]
     fn test_tokenise_multiline() {
         assert_eq!(
-            tok_unwrap(
+            tokenise(
                 r#"
                 if 2 > 3 then
                     print("wrong")
                 else
                     print("right!")
                 "#
-            ),
+            )
+            .unwrap(),
             vec![
-                Token::identifier("if"),
-                Token::Natural(2),
-                Token::Operator(Operator::GreaterThan),
-                Token::Natural(3),
-                Token::identifier("then"),
-                Token::identifier("print"),
-                Token::ParenOpen,
-                Token::String("wrong".into()),
-                Token::ParenClose,
-                Token::identifier("else"),
-                Token::identifier("print"),
-                Token::ParenOpen,
-                Token::String("right!".into()),
-                Token::ParenClose
+                Token::new(Tok::identifier("if"), 1, 1),
+                Token::new(Tok::Natural(2), 1, 4),
+                Token::new(Tok::Operator(Operator::GreaterThan), 1, 6),
+                Token::new(Tok::Natural(3), 1, 8),
+                Token::new(Tok::identifier("then"), 1, 10),
+                Token::new(Tok::identifier("print"), 2, 5),
+                Token::new(Tok::ParenOpen, 2, 10),
+                Token::new(Tok::String("wrong".into()), 2, 11),
+                Token::new(Tok::ParenClose, 2, 18),
+                Token::new(Tok::identifier("else"), 3, 1),
+                Token::new(Tok::identifier("print"), 4, 5),
+                Token::new(Tok::ParenOpen, 4, 10),
+                Token::new(Tok::String("right!".into()), 4, 11),
+                Token::new(Tok::ParenClose, 4, 12)
             ]
         )
     }

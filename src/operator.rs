@@ -12,7 +12,6 @@ pub enum Operator {
     Keep,
     Adv,
     DisAdv,
-    Sort,
     Equal,
     GreaterThan,
     LessThan,
@@ -43,6 +42,8 @@ impl Operator {
         Operator::Not,
     ];
 
+    pub const KEYWODRS: &'static [Operator] = &[Keep, Adv, DisAdv];
+
     pub fn precedence(&self) -> u8 {
         match self {
             Operator::Sentinel => 0,
@@ -63,7 +64,6 @@ impl Operator {
             Operator::Neg => 7,
             Operator::Adv => 7,
             Operator::DisAdv => 7,
-            Operator::Sort => 7,
             Operator::Exp => 8,
             Operator::Keep => 9,
         }
@@ -86,7 +86,6 @@ impl Operator {
             Operator::Keep => true,
             Operator::Adv => false,
             Operator::DisAdv => false,
-            Operator::Sort => false,
             Operator::Equal => true,
             Operator::GreaterThan => true,
             Operator::LessThan => true,
@@ -112,7 +111,6 @@ impl Operator {
             Operator::Keep => true,
             Operator::Adv => false,
             Operator::DisAdv => false,
-            Operator::Sort => false,
             Operator::Equal => true,
             Operator::GreaterThan => true,
             Operator::LessThan => true,
@@ -124,7 +122,7 @@ impl Operator {
     pub fn is_unary(&self) -> bool {
         matches!(
             self,
-            Operator::Not | Operator::Neg | Operator::Adv | Operator::DisAdv | Operator::Sort
+            Operator::Not | Operator::Neg | Operator::Adv | Operator::DisAdv
         )
     }
 
@@ -133,7 +131,7 @@ impl Operator {
     }
 
     pub fn is_unary_postfix(&self) -> bool {
-        matches!(self, Operator::Adv | Operator::DisAdv | Operator::Sort)
+        matches!(self, Operator::Adv | Operator::DisAdv)
     }
 
     pub fn greater(left: &Self, right: &Self) -> bool {
@@ -147,29 +145,36 @@ impl Operator {
         }
     }
 
-    pub fn str(&self) -> &str {
+    pub fn chars(&self) -> &[char] {
         match self {
-            Operator::Sentinel => "@",
-            Operator::Assign => "=",
-            Operator::Discard => ";",
-            Operator::And => "&",
-            Operator::Or => "|",
-            Operator::Not => "!",
-            Operator::Add => "+",
-            Operator::Sub => "-",
-            Operator::Mul => "*",
-            Operator::Div => "/",
-            Operator::Exp => "^",
-            Operator::Neg => "-",
-            Operator::Keep => "k",
-            Operator::Adv => "a",
-            Operator::DisAdv => "d",
-            Operator::Sort => "s",
-            Operator::Equal => "==",
-            Operator::GreaterThan => ">",
-            Operator::LessThan => "<",
-            Operator::GreaterEqual => ">=",
-            Operator::LessEqual => "<=",
+            Operator::Sentinel => &['@'],
+            Operator::Assign => &['='],
+            Operator::Discard => &[';'],
+            Operator::And => &['&'],
+            Operator::Or => &['|'],
+            Operator::Not => &['!'],
+            Operator::Add => &['+'],
+            Operator::Sub => &['-'],
+            Operator::Mul => &['*'],
+            Operator::Div => &['/'],
+            Operator::Exp => &['^'],
+            Operator::Neg => &['-'],
+            Operator::Keep => &['k'],
+            Operator::Adv => &['a'],
+            Operator::DisAdv => &['d'],
+            Operator::Equal => &['=', '='],
+            Operator::GreaterThan => &['>'],
+            Operator::LessThan => &['<'],
+            Operator::GreaterEqual => &['>', '='],
+            Operator::LessEqual => &['<', '='],
         }
+    }
+
+    pub fn str(&self) -> String {
+        let mut s = String::new();
+        for &c in self.chars() {
+            s.push(c);
+        }
+        s
     }
 }

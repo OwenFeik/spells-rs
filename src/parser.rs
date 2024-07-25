@@ -470,7 +470,6 @@ mod test {
             Token::Roll(10, 8),
             Token::Operator(Operator::Keep),
             Token::Natural(8),
-            Token::Operator(Operator::Sort),
         ])
         .unwrap();
 
@@ -486,8 +485,7 @@ mod test {
                 Node::Value(Value::Roll(Roll::new(10, 8))),
                 Node::Value(Value::Natural(8)),
                 Node::Binary(5, Operator::Keep, 6),
-                Node::Unary(7, Operator::Sort),
-                Node::Binary(4, Operator::Add, 8)
+                Node::Binary(4, Operator::Add, 7)
             ]
         );
     }

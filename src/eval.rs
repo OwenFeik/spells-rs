@@ -108,8 +108,7 @@ fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize
             | Operator::Not
             | Operator::Neg
             | Operator::Adv
-            | Operator::DisAdv
-            | Operator::Sort => Err(format!("Not a binary operator: {}", op.str())),
+            | Operator::DisAdv => Err(format!("Not a binary operator: {}", op.str())),
         }
     }
 }
@@ -121,7 +120,6 @@ fn unary(ast: &Ast, context: &mut Context, op: Operator, arg: usize) -> Res<Outc
         Operator::Neg => val.neg(),
         Operator::Adv => val.adv(),
         Operator::DisAdv => val.disadv(),
-        Operator::Sort => val.sort(),
         _ => Err(format!("Not a unary operator: {}", op.str())),
     }
 }
