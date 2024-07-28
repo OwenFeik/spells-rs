@@ -3,5 +3,8 @@
     "nixEnvSelector.nixFile": "${workspaceRoot}/shell.nix",
     "[rust]": {
         "editor.formatOnSave": true
-    }
+    },
+    "rust-analyzer.linkedProjects": [
+        "./Cargo.toml"
+    ]
 }
