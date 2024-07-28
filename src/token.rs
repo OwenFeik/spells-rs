@@ -23,16 +23,26 @@ impl Tok {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Token {
-    pub tok: Tok,
+    tok: Tok,
     line: usize,
     col: usize,
+    len: usize,
 }
 
 impl Token {
-    fn new(tok: Tok, line: usize, col: usize) -> Self {
-        Self { tok, line, col }
+    pub fn new(tok: Tok, line: usize, col: usize, len: usize) -> Self {
+        Self {
+            tok,
+            line,
+            col,
+            len,
+        }
+    }
+
+    pub fn inner(&self) -> &Tok {
+        &self.tok
     }
 }
 
@@ -41,7 +51,7 @@ fn read_string(input: &[char]) -> Res<(usize, Tok)> {
 
     let mut s = String::new();
     let mut escaped = false;
-    let mut i = 0;
+    let mut i = 1; // Skip opening quote.
     while let Some(c) = input.get(i).copied() {
         i = i + 1;
         match c {
@@ -55,15 +65,18 @@ fn read_string(input: &[char]) -> Res<(usize, Tok)> {
             '"' => {
                 if escaped {
                     s.push('"');
+                    escaped = false;
                 } else {
                     return Ok((i, Tok::String(s)));
                 }
             }
             'n' if escaped => {
                 s.push('\n');
+                escaped = false;
             }
             't' if escaped => {
                 s.push('\t');
+                escaped = false;
             }
             '\n' => {
                 return err("Strings must be single line.");
@@ -75,7 +88,7 @@ fn read_string(input: &[char]) -> Res<(usize, Tok)> {
 }
 
 fn read_number(input: &[char]) -> Res<(usize, Tok)> {
-    debug_assert!(input[0].is_numeric());
+    debug_assert!(input[0].is_numeric() || input[0] == 'd');
 
     let mut s = String::new();
     let mut is_decimal = false;
@@ -93,10 +106,12 @@ fn read_number(input: &[char]) -> Res<(usize, Tok)> {
                 }
             }
             'd' => {
-                s.push('d');
-                if is_roll || is_decimal {
+                if is_roll {
+                    break;
+                } else if is_decimal {
                     return Err(format!("Invalid literal: {s}"));
                 } else {
+                    s.push('d');
                     is_roll = true;
                 }
             }
@@ -139,13 +154,6 @@ fn read_identifier(input: &[char]) -> Res<(usize, Tok)> {
         }
     }
 
-    let chars = s.chars().collect::<Vec<char>>();
-    let schars: &[char] = chars.as_slice();
-    for op in Operator::KEYWODRS {
-        if schars == op.chars() {
-            return Ok((s.len(), Tok::Operator(*op)));
-        }
-    }
     Ok((s.len(), Tok::Identifier(s)))
 }
 
@@ -167,6 +175,7 @@ fn read_token(input: &[char]) -> Res<(usize, Tok)> {
         Some('.') => read_number(input),
         Some(c) if c.is_numeric() => read_number(input),
         Some('_') => read_identifier(input),
+        Some('d') => read_number(input).or_else(|_| read_identifier(input)),
         Some(c) if c.is_alphabetic() => read_identifier(input),
         Some(c) => Err(format!("{c} unexpected")),
     }
@@ -184,33 +193,71 @@ fn read_comment(input: &[char]) -> usize {
     return len;
 }
 
+fn maybe_read_postfix_roll_op(input: &[char]) -> Res<(usize, Tok)> {
+    let is_operator = if let Some(c) = input.get(1)
+        && !c.is_alphabetic()
+        && *c != '_'
+    {
+        true
+    } else {
+        input.len() == 1
+    };
+
+    if is_operator && let Some(c) = input.get(0) {
+        for op in Operator::ROLL_SUFFIX_TOKENS {
+            if op.chars() == &[*c] {
+                return Ok((1, Tok::Operator(*op)));
+            }
+        }
+    }
+    read_token(input)
+}
+
 pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
     let chars: Vec<char> = input.chars().collect();
 
     let mut input: &[char] = chars.as_slice();
-    let mut tokens = Vec::new();
+    let mut tokens: Vec<Token> = Vec::new();
     let mut line = 1;
-    let mut col = 0;
+    let mut col = 1;
+    let mut whitespace_since_token = false;
     while !input.is_empty() {
-        col += 1;
         match input[0] {
-            ' ' | '\t' => input = &input[1..],
+            ' ' | '\t' => {
+                col += 1;
+                input = &input[1..];
+                whitespace_since_token = true;
+            }
             '\n' => {
                 line += 1;
-                col = 0;
+                col = 1;
                 input = &input[1..];
+                whitespace_since_token = true;
             }
             '#' => {
                 let len = read_comment(input);
                 line += 1;
-                col = 0;
+                col = 1;
                 input = &input[len..];
+                whitespace_since_token = true;
+            }
+            'a' | 'd' | 'k'
+                if !whitespace_since_token
+                    && let Some(token) = tokens.last()
+                    && let Tok::Roll(..) = token.inner() =>
+            {
+                let (len, tok) = maybe_read_postfix_roll_op(input)?;
+                tokens.push(Token::new(tok, line, col, len));
+                col += len;
+                input = &input[len..];
+                whitespace_since_token = false;
             }
             _ => {
                 let (len, tok) = read_token(input)?;
+                tokens.push(Token::new(tok, line, col, len));
                 col += len;
                 input = &input[len..];
-                tokens.push(Token::new(tok, line, col));
+                whitespace_since_token = false;
             }
         }
     }
@@ -255,7 +302,11 @@ mod test {
                 Tok::Operator(Operator::Div),
                 Tok::Operator(Operator::Exp)
             ]
-        );
+        )
+    }
+
+    #[test]
+    fn test_tokenise_roll_ops() {
         assert_eq!(
             tok_unwrap("d4a d8d 4d6k4"),
             vec![
@@ -267,7 +318,22 @@ mod test {
                 Tok::Operator(Operator::Keep),
                 Tok::Natural(4),
             ]
-        );
+        )
+    }
+
+    #[test]
+    fn test_tokenise_roll_suffix() {
+        assert_eq!(
+            tok_unwrap("d8d d8a 1d8d"),
+            vec![
+                Tok::Roll(1, 8),
+                Tok::Operator(Operator::DisAdv),
+                Tok::Roll(1, 8),
+                Tok::Operator(Operator::Adv),
+                Tok::Roll(1, 8),
+                Tok::Operator(Operator::DisAdv)
+            ]
+        )
     }
 
     #[test]
@@ -428,29 +494,38 @@ mod test {
         assert_eq!(
             tokenise(
                 r#"
-                if 2 > 3 then
-                    print("wrong")
-                else
-                    print("right!")
+if 2 > 3 then
+    print("wrong")
+else
+    print("right!")
                 "#
+                .trim()
             )
             .unwrap(),
             vec![
-                Token::new(Tok::identifier("if"), 1, 1),
-                Token::new(Tok::Natural(2), 1, 4),
-                Token::new(Tok::Operator(Operator::GreaterThan), 1, 6),
-                Token::new(Tok::Natural(3), 1, 8),
-                Token::new(Tok::identifier("then"), 1, 10),
-                Token::new(Tok::identifier("print"), 2, 5),
-                Token::new(Tok::ParenOpen, 2, 10),
-                Token::new(Tok::String("wrong".into()), 2, 11),
-                Token::new(Tok::ParenClose, 2, 18),
-                Token::new(Tok::identifier("else"), 3, 1),
-                Token::new(Tok::identifier("print"), 4, 5),
-                Token::new(Tok::ParenOpen, 4, 10),
-                Token::new(Tok::String("right!".into()), 4, 11),
-                Token::new(Tok::ParenClose, 4, 12)
+                Token::new(Tok::identifier("if"), 1, 1, 2),
+                Token::new(Tok::Natural(2), 1, 4, 1),
+                Token::new(Tok::Operator(Operator::GreaterThan), 1, 6, 1),
+                Token::new(Tok::Natural(3), 1, 8, 1),
+                Token::new(Tok::identifier("then"), 1, 10, 4),
+                Token::new(Tok::identifier("print"), 2, 5, 5),
+                Token::new(Tok::ParenOpen, 2, 10, 1),
+                Token::new(Tok::String("wrong".into()), 2, 11, 7),
+                Token::new(Tok::ParenClose, 2, 18, 1),
+                Token::new(Tok::identifier("else"), 3, 1, 4),
+                Token::new(Tok::identifier("print"), 4, 5, 5),
+                Token::new(Tok::ParenOpen, 4, 10, 1),
+                Token::new(Tok::String("right!".into()), 4, 11, 8),
+                Token::new(Tok::ParenClose, 4, 19, 1)
             ]
+        )
+    }
+
+    #[test]
+    fn test_tokenise_escaped_string() {
+        assert_eq!(
+            tokenise("\"\\\"\"").unwrap(),
+            vec![Token::new(Tok::String("\"".into()), 1, 1, 4)]
         )
     }
 }

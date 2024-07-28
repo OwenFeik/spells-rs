@@ -24,25 +24,26 @@ pub enum Operator {
 
 impl Operator {
     // Operators which are produced context-free by the tokeniser.
+    // NB it is important that these are ordered longest-to-shortest.
     pub const TOKENS: &'static [Operator] = &[
-        Operator::Assign,
-        Operator::Discard,
-        Operator::Add,
-        Operator::Sub,
-        Operator::Mul,
-        Operator::Div,
-        Operator::Exp,
-        Operator::Equal,
-        Operator::GreaterThan,
-        Operator::LessThan,
-        Operator::GreaterEqual,
-        Operator::LessEqual,
-        Operator::And,
-        Operator::Or,
-        Operator::Not,
+        Operator::Equal,        // ==
+        Operator::GreaterEqual, // >=
+        Operator::LessEqual,    // <=
+        Operator::GreaterThan,  // >
+        Operator::LessThan,     // <
+        Operator::Assign,       // =
+        Operator::Discard,      // ;
+        Operator::Add,          // +
+        Operator::Sub,          // -
+        Operator::Mul,          // *
+        Operator::Div,          // /
+        Operator::Exp,          // ^
+        Operator::And,          // &
+        Operator::Or,           // |
+        Operator::Not,          // !
     ];
 
-    pub const KEYWODRS: &'static [Operator] = &[Keep, Adv, DisAdv];
+    pub const ROLL_SUFFIX_TOKENS: &'static [Operator] = &[Self::Keep, Self::Adv, Self::DisAdv];
 
     pub fn precedence(&self) -> u8 {
         match self {

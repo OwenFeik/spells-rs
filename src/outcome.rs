@@ -129,15 +129,6 @@ impl Outcome {
         })
     }
 
-    pub fn sort(self) -> Res<Self> {
-        let (this, mut values) = self.rolls()?;
-        values.sort();
-        Ok(Self {
-            value: Value::Rolls(values),
-            rolls: this.rolls,
-        })
-    }
-
     pub fn keep(self, rhs: Self) -> Res<Self> {
         let (mut this, mut values) = self.rolls()?;
         let (mut that, keep) = rhs.natural()?;

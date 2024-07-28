@@ -271,25 +271,6 @@ mod test {
     }
 
     #[test]
-    fn test_sort() {
-        let expr = Outcome {
-            value: Value::Rolls(vec![3, 4, 1, 7]),
-            rolls: Vec::new(),
-        };
-        let values = expr.sort().unwrap().value.rolls().unwrap();
-        assert_eq!(values, vec![1, 3, 4, 7]);
-    }
-
-    #[test]
-    fn test_sort_outcomes() {
-        let ast = ast_of("8d8s");
-        assert_eq!(
-            evaluate(&ast, &mut Context::empty()).unwrap().rolls.len(),
-            1
-        );
-    }
-
-    #[test]
     fn test_eval() {
         let ast = ast_of("2 + 3 - 4 * 5");
         assert_eq!(

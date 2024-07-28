@@ -3,6 +3,7 @@ use crate::{
     err,
     operator::Operator,
     roll::Roll,
+    token::Tok,
     value::Value,
     Res,
 };
@@ -70,7 +71,8 @@ impl<'a> Parser<'a> {
     fn expr(&mut self) -> Res<usize> {
         let mut id = self.term()?;
 
-        while let Some(Token::Operator(op)) = self.peek()
+        while let Some(token) = self.peek()
+            && let Tok::Operator(op) = token.inner()
             && op.is_binary()
         {
             let op = *op;
@@ -89,9 +91,9 @@ impl<'a> Parser<'a> {
     }
 
     fn term(&mut self) -> Res<usize> {
-        let id = match self.next()?.clone() {
-            Token::Identifier(name) => {
-                if let Some(Token::ParenOpen) = self.peek() {
+        let id = match self.next()?.inner().clone() {
+            Tok::Identifier(name) => {
+                if self.next_is(Tok::ParenOpen) {
                     self.call(name)
                 } else {
                     match name.as_str() {
@@ -103,38 +105,36 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            Token::Natural(n) => Ok(self.push_operand(Node::Value(Value::Natural(n as i64)))),
-            Token::Decimal(text) => match text.parse() {
-                Ok(v) => Ok(self.push_operand(Node::Value(Value::Decimal(v)))),
-                Err(_) => Err(format!("Invalid numeric literal: '{text}'.")),
-            },
-            Token::Roll(q, d) => Ok(self.push_operand(Node::Value(Value::Roll(Roll::new(q, d))))),
-            Token::String(val) => Ok(self.push_operand(Node::Value(Value::String(val)))),
-            Token::ParenOpen => {
+            Tok::Natural(n) => Ok(self.push_operand(Node::Value(Value::Natural(n as i64)))),
+            Tok::Decimal(v) => Ok(self.push_operand(Node::Value(Value::Decimal(v)))),
+            Tok::Roll(q, d) => Ok(self.push_operand(Node::Value(Value::Roll(Roll::new(q, d))))),
+            Tok::String(val) => Ok(self.push_operand(Node::Value(Value::String(val)))),
+            Tok::ParenOpen => {
                 self.operators.push(Operator::Sentinel);
                 let id = self.expr()?;
-                self.expect(Token::ParenClose)?;
+                self.expect(Tok::ParenClose)?;
                 self.operators.pop();
                 Ok(id)
             }
-            Token::ParenClose => err(") unexpected."),
-            Token::BracketOpen => self.list(),
-            Token::BracketClose => err("] unexpected."),
-            Token::Comma => err(", unexpected."),
-            Token::Operator(op) if op.is_unary_prefix() => {
+            Tok::ParenClose => err(") unexpected."),
+            Tok::BracketOpen => self.list(),
+            Tok::BracketClose => err("] unexpected."),
+            Tok::Comma => err(", unexpected."),
+            Tok::Operator(op) if op.is_unary_prefix() => {
                 self.push_operator(op);
                 self.term()
             }
-            Token::Operator(Operator::Sub) => {
+            Tok::Operator(Operator::Sub) => {
                 // N.B. sub / neg can be ambiguous, so allow sub in place of
                 // neg as a unary prefix.
                 self.push_operator(Operator::Neg);
                 self.term()
             }
-            Token::Operator(op) => err(format!("{} unexpected.", op.str())),
+            Tok::Operator(op) => err(format!("{} unexpected.", op.str())),
         }?;
 
-        while let Some(Token::Operator(op)) = self.peek()
+        while let Some(token) = self.peek()
+            && let Tok::Operator(op) = token.inner()
             && op.is_unary_postfix()
         {
             let op = *op;
@@ -154,9 +154,9 @@ impl<'a> Parser<'a> {
 
     fn conditional(&mut self) -> Res<usize> {
         let cond = self.in_scope(Self::expr)?;
-        self.expect(Token::identifier("then"))?;
+        self.expect(Tok::identifier("then"))?;
         let then = self.in_scope(Self::expr)?;
-        let fail = if self.peek() == Some(&Token::identifier("else")) {
+        let fail = if self.next_is(Tok::identifier("else")) {
             self.next()?; // Toss else
             Some(self.in_scope(Self::expr)?)
         } else {
@@ -167,14 +167,14 @@ impl<'a> Parser<'a> {
 
     fn _list(&mut self) -> Res<Node> {
         let mut values = Vec::new();
-        if !matches!(self.peek(), Some(Token::BracketClose)) {
+        if !self.next_is(Tok::BracketClose) {
             values.push(self.expr()?);
-            while matches!(self.peek(), Some(Token::Comma)) {
-                self.expect(Token::Comma)?;
+            while self.next_is(Tok::Comma) {
+                self.expect(Tok::Comma)?;
                 values.push(self.expr()?);
             }
         }
-        self.expect(Token::BracketClose)?;
+        self.expect(Tok::BracketClose)?;
         Ok(Node::List(values))
     }
 
@@ -184,16 +184,16 @@ impl<'a> Parser<'a> {
     }
 
     fn _call(&mut self, name: String) -> Res<usize> {
-        self.expect(Token::ParenOpen)?;
+        self.expect(Tok::ParenOpen)?;
         let mut args = Vec::new();
-        if !matches!(self.peek(), Some(Token::ParenClose)) {
+        if !self.next_is(Tok::ParenClose) {
             args.push(self.expr()?);
-            while matches!(self.peek(), Some(Token::Comma)) {
-                self.expect(Token::Comma)?;
+            while self.next_is(Tok::Comma) {
+                self.expect(Tok::Comma)?;
                 args.push(self.expr()?);
             }
         }
-        self.expect(Token::ParenClose)?;
+        self.expect(Tok::ParenClose)?;
         Ok(self.ast.add(Node::Call(name, args)))
     }
 
@@ -216,16 +216,24 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expect(&mut self, token: Token) -> Res<()> {
-        let actual = self.next()?;
-        if actual == &token {
+    fn expect(&mut self, tok: Tok) -> Res<()> {
+        let actual = self.next()?.inner();
+        if *actual == tok {
             Ok(())
         } else {
-            err(format!("Expected {token:?} but found {actual:?}."))
+            err(format!("Expected {tok:?} but found {actual:?}."))
         }
     }
 
-    fn peek(&mut self) -> Option<&Token> {
+    fn next_is(&self, tok: Tok) -> bool {
+        if let Some(token) = self.peek() {
+            *token.inner() == tok
+        } else {
+            false
+        }
+    }
+
+    fn peek(&self) -> Option<&Token> {
         self.input.first()
     }
 
@@ -298,12 +306,21 @@ mod test {
         ast.get(ast.start())
     }
 
+    fn parse_toks(toks: &[Tok]) -> Res<Ast> {
+        parse(
+            &toks
+                .iter()
+                .map(|t| Token::new(t.clone(), 0, 0, 0))
+                .collect::<Vec<Token>>(),
+        )
+    }
+
     #[test]
     fn test_parse_addition() {
-        let ast = parse(&[
-            Token::Natural(2),
-            Token::Operator(Operator::Add),
-            Token::Natural(3),
+        let ast = parse_toks(&[
+            Tok::Natural(2),
+            Tok::Operator(Operator::Add),
+            Tok::Natural(3),
         ])
         .unwrap();
         assert_eq!(
@@ -319,7 +336,7 @@ mod test {
 
     #[test]
     fn test_negation() {
-        let ast = parse(&[Token::Operator(Operator::Sub), Token::Natural(3)]).unwrap();
+        let ast = parse_toks(&[Tok::Operator(Operator::Sub), Tok::Natural(3)]).unwrap();
         assert_eq!(
             ast.exprs(),
             vec![
@@ -329,11 +346,11 @@ mod test {
         );
         assert_eq!(root(&ast), Some(&Node::Unary(0, Operator::Neg)));
 
-        let ast = parse(&[
-            Token::Natural(2),
-            Token::Operator(Operator::Add),
-            Token::Operator(Operator::Sub),
-            Token::Natural(3),
+        let ast = parse_toks(&[
+            Tok::Natural(2),
+            Tok::Operator(Operator::Add),
+            Tok::Operator(Operator::Sub),
+            Tok::Natural(3),
         ])
         .unwrap();
         assert_eq!(
@@ -350,17 +367,17 @@ mod test {
 
     #[test]
     fn test_precedence() {
-        let ast = parse(&[
-            Token::Operator(Operator::Sub),
-            Token::Natural(2),
-            Token::Operator(Operator::Add),
-            Token::Natural(3),
-            Token::Operator(Operator::Exp),
-            Token::Natural(4),
-            Token::Operator(Operator::Mul),
-            Token::Natural(5),
-            Token::Operator(Operator::Sub),
-            Token::Natural(6),
+        let ast = parse_toks(&[
+            Tok::Operator(Operator::Sub),
+            Tok::Natural(2),
+            Tok::Operator(Operator::Add),
+            Tok::Natural(3),
+            Tok::Operator(Operator::Exp),
+            Tok::Natural(4),
+            Tok::Operator(Operator::Mul),
+            Tok::Natural(5),
+            Tok::Operator(Operator::Sub),
+            Tok::Natural(6),
         ])
         .unwrap();
 
@@ -385,11 +402,11 @@ mod test {
 
     #[test]
     fn test_neg_precedence() {
-        let ast = parse(&[
-            Token::Operator(Operator::Sub),
-            Token::Natural(2),
-            Token::Operator(Operator::Exp),
-            Token::Natural(3),
+        let ast = parse_toks(&[
+            Tok::Operator(Operator::Sub),
+            Tok::Natural(2),
+            Tok::Operator(Operator::Exp),
+            Tok::Natural(3),
         ])
         .unwrap();
 
@@ -398,12 +415,12 @@ mod test {
 
     #[test]
     fn test_parse_repeated_addition() {
-        let ast = parse(&[
-            Token::Natural(2),
-            Token::Operator(Operator::Add),
-            Token::Natural(3),
-            Token::Operator(Operator::Add),
-            Token::Natural(4),
+        let ast = parse_toks(&[
+            Tok::Natural(2),
+            Tok::Operator(Operator::Add),
+            Tok::Natural(3),
+            Tok::Operator(Operator::Add),
+            Tok::Natural(4),
         ])
         .unwrap();
         assert_eq!(
@@ -420,12 +437,12 @@ mod test {
 
     #[test]
     fn test_addition_subtraction() {
-        let ast = parse(&[
-            Token::Natural(3),
-            Token::Operator(Operator::Sub),
-            Token::Natural(4),
-            Token::Operator(Operator::Add),
-            Token::Natural(5),
+        let ast = parse_toks(&[
+            Tok::Natural(3),
+            Tok::Operator(Operator::Sub),
+            Tok::Natural(4),
+            Tok::Operator(Operator::Add),
+            Tok::Natural(5),
         ])
         .unwrap();
         assert_eq!(
@@ -442,10 +459,10 @@ mod test {
 
     #[test]
     fn test_keep() {
-        let ast = parse(&[
-            Token::Roll(10, 8),
-            Token::Operator(Operator::Keep),
-            Token::Natural(8),
+        let ast = parse_toks(&[
+            Tok::Roll(10, 8),
+            Tok::Operator(Operator::Keep),
+            Tok::Natural(8),
         ])
         .unwrap();
         assert_eq!(
@@ -460,16 +477,16 @@ mod test {
 
     #[test]
     fn test_roll_operators() {
-        let ast = parse(&[
-            Token::Roll(1, 20),
-            Token::Operator(Operator::Adv),
-            Token::Operator(Operator::Add),
-            Token::Roll(1, 4),
-            Token::Operator(Operator::DisAdv),
-            Token::Operator(Operator::Add),
-            Token::Roll(10, 8),
-            Token::Operator(Operator::Keep),
-            Token::Natural(8),
+        let ast = parse_toks(&[
+            Tok::Roll(1, 20),
+            Tok::Operator(Operator::Adv),
+            Tok::Operator(Operator::Add),
+            Tok::Roll(1, 4),
+            Tok::Operator(Operator::DisAdv),
+            Tok::Operator(Operator::Add),
+            Tok::Roll(10, 8),
+            Tok::Operator(Operator::Keep),
+            Tok::Natural(8),
         ])
         .unwrap();
 
