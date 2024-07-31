@@ -58,6 +58,7 @@ fn read_string(input: &[char]) -> Res<(usize, Tok)> {
             '\\' => {
                 if escaped {
                     s.push('\\');
+                    escaped = false;
                 } else {
                     escaped = true;
                 }
@@ -526,6 +527,17 @@ else
         assert_eq!(
             tokenise("\"\\\"\"").unwrap(),
             vec![Token::new(Tok::String("\"".into()), 1, 1, 4)]
+        )
+    }
+
+    #[test]
+    fn test_tokenise_escaped_string_offsets() {
+        assert_eq!(
+            tokenise("\"\\\\\" \"\\\"\"").unwrap(),
+            vec![
+                Token::new(Tok::String("\\".into()), 1, 1, 4),
+                Token::new(Tok::String("\"".into()), 1, 6, 4)
+            ]
         )
     }
 }
