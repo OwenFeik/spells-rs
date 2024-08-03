@@ -40,12 +40,11 @@ fn eval(input: &str, context: &mut context::Context) -> Res<outcome::Outcome> {
 }
 
 fn eval_tome(input: &str, context: &mut context::Context) -> Res<()> {
-    let tokens = token::tokenise(input)?;
-    let mut rest = tokens.as_slice();
-    while !rest.is_empty() {
-        let ast;
-        (ast, rest) = parser::parse_first(rest)?;
+    let mut tokens = token::tokenise(input)?;
+    while !tokens.is_empty() {
+        let (ast, rest) = parser::parse_first(&tokens)?;
         eval::evaluate(&ast, context)?;
+        tokens.truncate(tokens.len().saturating_sub(rest.len()));
     }
 
     Ok(())

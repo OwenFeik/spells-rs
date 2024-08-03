@@ -3,7 +3,7 @@ use crate::{
     err,
     operator::Operator,
     roll::Roll,
-    token::Tok,
+    token::{Tok, TokenList},
     value::Value,
     Res,
 };
@@ -20,9 +20,9 @@ struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    fn new(input: &'a [Token]) -> Self {
+    fn new(input: &'a TokenList) -> Self {
         Self {
-            input,
+            input: input.as_slice(),
             operators: Vec::new(),
             operands: Vec::new(),
             operators_scopes: Vec::new(),
@@ -280,17 +280,17 @@ impl<'a> Parser<'a> {
     }
 }
 
-pub fn parse(input: &[Token]) -> Res<Ast> {
+pub fn parse(input: &TokenList) -> Res<Ast> {
     Parser::new(input).parse()
 }
 
-pub fn parse_first(input: &[Token]) -> Res<(Ast, &[Token])> {
+pub fn parse_first(input: &TokenList) -> Res<(Ast, &[Token])> {
     Parser::new(input).parse_first()
 }
 
 #[cfg(test)]
 mod test {
-    use crate::token::tokenise;
+    use crate::token::{tokenise, toks_to_list};
 
     use super::*;
 
@@ -307,12 +307,7 @@ mod test {
     }
 
     fn parse_toks(toks: &[Tok]) -> Res<Ast> {
-        parse(
-            &toks
-                .iter()
-                .map(|t| Token::new(t.clone(), 0, 0, 0))
-                .collect::<Vec<Token>>(),
-        )
+        parse(&toks_to_list(toks.into()))
     }
 
     #[test]

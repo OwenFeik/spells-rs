@@ -28,14 +28,16 @@ pub struct Token {
     tok: Tok,
     line: usize,
     col: usize,
+    index: usize,
     len: usize,
 }
 
 impl Token {
-    pub fn new(tok: Tok, line: usize, col: usize, len: usize) -> Self {
+    pub fn new(tok: Tok, line: usize, col: usize, index: usize, len: usize) -> Self {
         Self {
             tok,
             line,
+            index,
             col,
             len,
         }
@@ -43,6 +45,40 @@ impl Token {
 
     pub fn inner(&self) -> &Tok {
         &self.tok
+    }
+}
+
+pub struct TokenList {
+    text: Vec<char>,
+    tokens: Vec<Token>,
+}
+
+impl TokenList {
+    pub fn as_slice(&self) -> &[Token] {
+        &self.tokens
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.tokens.len()
+    }
+
+    pub fn text_of(&self, token: &Token) -> Res<String> {
+        if let Some(chars) = self.text.get((token.index)..(token.index + token.len)) {
+            Ok(chars.iter().collect())
+        } else {
+            Err(format!(
+                "Token at index {} of length {} not within text.",
+                token.index, token.len
+            ))
+        }
+    }
+
+    pub fn truncate(&mut self, new_start: usize) {
+        self.tokens = self.tokens.split_off(new_start);
     }
 }
 
@@ -214,22 +250,25 @@ fn maybe_read_postfix_roll_op(input: &[char]) -> Res<(usize, Tok)> {
     read_token(input)
 }
 
-pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
-    let chars: Vec<char> = input.chars().collect();
+pub fn tokenise(input: &str) -> Result<TokenList, String> {
+    let text: Vec<char> = input.chars().collect();
 
-    let mut input: &[char] = chars.as_slice();
+    let mut input: &[char] = text.as_slice();
     let mut tokens: Vec<Token> = Vec::new();
+    let mut index = 0;
     let mut line = 1;
     let mut col = 1;
     let mut whitespace_since_token = false;
     while !input.is_empty() {
         match input[0] {
             ' ' | '\t' => {
+                index += 1;
                 col += 1;
                 input = &input[1..];
                 whitespace_since_token = true;
             }
             '\n' => {
+                index += 1;
                 line += 1;
                 col = 1;
                 input = &input[1..];
@@ -237,6 +276,7 @@ pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
             }
             '#' => {
                 let len = read_comment(input);
+                index += len;
                 line += 1;
                 col = 1;
                 input = &input[len..];
@@ -248,14 +288,16 @@ pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
                     && let Tok::Roll(..) = token.inner() =>
             {
                 let (len, tok) = maybe_read_postfix_roll_op(input)?;
-                tokens.push(Token::new(tok, line, col, len));
+                tokens.push(Token::new(tok, line, col, index, len));
+                index += len;
                 col += len;
                 input = &input[len..];
                 whitespace_since_token = false;
             }
             _ => {
                 let (len, tok) = read_token(input)?;
-                tokens.push(Token::new(tok, line, col, len));
+                tokens.push(Token::new(tok, line, col, index, len));
+                index += len;
                 col += len;
                 input = &input[len..];
                 whitespace_since_token = false;
@@ -263,7 +305,18 @@ pub fn tokenise(input: &str) -> Result<Vec<Token>, String> {
         }
     }
 
-    Ok(tokens)
+    Ok(TokenList { tokens, text })
+}
+
+#[cfg(test)]
+pub fn toks_to_list(toks: Vec<Tok>) -> TokenList {
+    TokenList {
+        text: Vec::new(),
+        tokens: toks
+            .into_iter()
+            .map(|t| Token::new(t.clone(), 0, 0, 0, 0))
+            .collect::<Vec<Token>>(),
+    }
 }
 
 #[cfg(test)]
@@ -275,6 +328,7 @@ mod test {
     fn tok_unwrap(input: &str) -> Vec<Tok> {
         tokenise(input)
             .unwrap()
+            .tokens
             .into_iter()
             .map(|token| token.tok)
             .collect()
@@ -502,22 +556,23 @@ else
                 "#
                 .trim()
             )
-            .unwrap(),
+            .unwrap()
+            .tokens,
             vec![
-                Token::new(Tok::identifier("if"), 1, 1, 2),
-                Token::new(Tok::Natural(2), 1, 4, 1),
-                Token::new(Tok::Operator(Operator::GreaterThan), 1, 6, 1),
-                Token::new(Tok::Natural(3), 1, 8, 1),
-                Token::new(Tok::identifier("then"), 1, 10, 4),
-                Token::new(Tok::identifier("print"), 2, 5, 5),
-                Token::new(Tok::ParenOpen, 2, 10, 1),
-                Token::new(Tok::String("wrong".into()), 2, 11, 7),
-                Token::new(Tok::ParenClose, 2, 18, 1),
-                Token::new(Tok::identifier("else"), 3, 1, 4),
-                Token::new(Tok::identifier("print"), 4, 5, 5),
-                Token::new(Tok::ParenOpen, 4, 10, 1),
-                Token::new(Tok::String("right!".into()), 4, 11, 8),
-                Token::new(Tok::ParenClose, 4, 19, 1)
+                Token::new(Tok::identifier("if"), 1, 1, 0, 2),
+                Token::new(Tok::Natural(2), 1, 4, 3, 1),
+                Token::new(Tok::Operator(Operator::GreaterThan), 1, 6, 5, 1),
+                Token::new(Tok::Natural(3), 1, 8, 7, 1),
+                Token::new(Tok::identifier("then"), 1, 10, 9, 4),
+                Token::new(Tok::identifier("print"), 2, 5, 18, 5),
+                Token::new(Tok::ParenOpen, 2, 10, 23, 1),
+                Token::new(Tok::String("wrong".into()), 2, 11, 24, 7),
+                Token::new(Tok::ParenClose, 2, 18, 31, 1),
+                Token::new(Tok::identifier("else"), 3, 1, 33, 4),
+                Token::new(Tok::identifier("print"), 4, 5, 42, 5),
+                Token::new(Tok::ParenOpen, 4, 10, 47, 1),
+                Token::new(Tok::String("right!".into()), 4, 11, 48, 8),
+                Token::new(Tok::ParenClose, 4, 19, 56, 1)
             ]
         )
     }
@@ -525,18 +580,18 @@ else
     #[test]
     fn test_tokenise_escaped_string() {
         assert_eq!(
-            tokenise("\"\\\"\"").unwrap(),
-            vec![Token::new(Tok::String("\"".into()), 1, 1, 4)]
+            tokenise("\"\\\"\"").unwrap().tokens,
+            vec![Token::new(Tok::String("\"".into()), 1, 1, 0, 4)]
         )
     }
 
     #[test]
     fn test_tokenise_escaped_string_offsets() {
         assert_eq!(
-            tokenise("\"\\\\\" \"\\\"\"").unwrap(),
+            tokenise("\"\\\\\" \"\\\"\"").unwrap().tokens,
             vec![
-                Token::new(Tok::String("\\".into()), 1, 1, 4),
-                Token::new(Tok::String("\"".into()), 1, 6, 4)
+                Token::new(Tok::String("\\".into()), 1, 1, 0, 4),
+                Token::new(Tok::String("\"".into()), 1, 6, 5, 4)
             ]
         )
     }
