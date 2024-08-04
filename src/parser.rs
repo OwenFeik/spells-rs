@@ -11,6 +11,7 @@ use crate::{
 use super::token::Token;
 
 struct Parser<'a> {
+    source: &'a TokenList,
     input: &'a [Token],
     operators: Vec<Operator>,
     operands: Vec<usize>,
@@ -22,6 +23,7 @@ struct Parser<'a> {
 impl<'a> Parser<'a> {
     fn new(input: &'a TokenList) -> Self {
         Self {
+            source: input,
             input: input.as_slice(),
             operators: Vec::new(),
             operands: Vec::new(),
@@ -91,24 +93,27 @@ impl<'a> Parser<'a> {
     }
 
     fn term(&mut self) -> Res<usize> {
-        let id = match self.next()?.inner().clone() {
+        let token = self.next()?.clone();
+        let id = match token.inner() {
             Tok::Identifier(name) => {
                 if self.next_is(Tok::ParenOpen) {
-                    self.call(name)
+                    self.call(name.clone())
                 } else {
                     match name.as_str() {
                         "if" => self.conditional(),
-                        "then" | "else" => Err(format!("{name} must follow an opening if.")),
+                        "then" | "else" => {
+                            self.token_err(&token, format!("{name} must follow an opening if."))
+                        }
                         "true" => Ok(self.push_operand(Node::Value(Value::Bool(true)))),
                         "false" => Ok(self.push_operand(Node::Value(Value::Bool(false)))),
-                        _ => Ok(self.push_operand(Node::Identifier(name))),
+                        _ => Ok(self.push_operand(Node::Identifier(name.clone()))),
                     }
                 }
             }
-            Tok::Natural(n) => Ok(self.push_operand(Node::Value(Value::Natural(n as i64)))),
-            Tok::Decimal(v) => Ok(self.push_operand(Node::Value(Value::Decimal(v)))),
-            Tok::Roll(q, d) => Ok(self.push_operand(Node::Value(Value::Roll(Roll::new(q, d))))),
-            Tok::String(val) => Ok(self.push_operand(Node::Value(Value::String(val)))),
+            Tok::Natural(n) => Ok(self.push_operand(Node::Value(Value::Natural(*n as i64)))),
+            Tok::Decimal(v) => Ok(self.push_operand(Node::Value(Value::Decimal(*v)))),
+            Tok::Roll(q, d) => Ok(self.push_operand(Node::Value(Value::Roll(Roll::new(*q, *d))))),
+            Tok::String(val) => Ok(self.push_operand(Node::Value(Value::String(val.clone())))),
             Tok::ParenOpen => {
                 self.operators.push(Operator::Sentinel);
                 let id = self.expr()?;
@@ -116,12 +121,12 @@ impl<'a> Parser<'a> {
                 self.operators.pop();
                 Ok(id)
             }
-            Tok::ParenClose => err(") unexpected."),
+            Tok::ParenClose => self.token_err(&token, ") unexpected."),
             Tok::BracketOpen => self.list(),
-            Tok::BracketClose => err("] unexpected."),
-            Tok::Comma => err(", unexpected."),
+            Tok::BracketClose => self.token_err(&token, "] unexpected."),
+            Tok::Comma => self.token_err(&token, ", unexpected."),
             Tok::Operator(op) if op.is_unary_prefix() => {
-                self.push_operator(op);
+                self.push_operator(*op);
                 self.term()
             }
             Tok::Operator(Operator::Sub) => {
@@ -130,7 +135,7 @@ impl<'a> Parser<'a> {
                 self.push_operator(Operator::Neg);
                 self.term()
             }
-            Tok::Operator(op) => err(format!("{} unexpected.", op.str())),
+            Tok::Operator(op) => self.token_err(&token, format!("{} unexpected.", op.str())),
         }?;
 
         while let Some(token) = self.peek()
@@ -217,11 +222,15 @@ impl<'a> Parser<'a> {
     }
 
     fn expect(&mut self, tok: Tok) -> Res<()> {
-        let actual = self.next()?.inner();
-        if *actual == tok {
+        let actual = self.next()?;
+        if *actual.inner() == tok {
             Ok(())
         } else {
-            err(format!("Expected {tok:?} but found {actual:?}."))
+            let token = actual.clone();
+            self.token_err(
+                &token,
+                format!("Expected {tok:?} but found {:?}.", token.inner()),
+            )
         }
     }
 
@@ -277,6 +286,10 @@ impl<'a> Parser<'a> {
             }
         }
         self.operators.push(op);
+    }
+
+    fn token_err<T, S: std::fmt::Display>(&self, token: &Token, message: S) -> Res<T> {
+        Err(format!("{}\n{}", self.source.context(token), message))
     }
 }
 

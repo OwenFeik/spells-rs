@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::{err, operator::Operator, Res};
 
 const COMMENT: char = '#';
@@ -66,15 +68,58 @@ impl TokenList {
         self.tokens.len()
     }
 
-    pub fn text_of(&self, token: &Token) -> Res<String> {
-        if let Some(chars) = self.text.get((token.index)..(token.index + token.len)) {
-            Ok(chars.iter().collect())
+    fn range_to_string(&self, range: Range<usize>) -> String {
+        if let Some(chars) = self.text.get(range) {
+            chars.iter().collect()
         } else {
-            Err(format!(
-                "Token at index {} of length {} not within text.",
-                token.index, token.len
-            ))
+            String::new()
         }
+    }
+
+    pub fn context(&self, token: &Token) -> String {
+        let line = self.line_of(token);
+        let text = self.text_of(token);
+        let spaces = " ".repeat(token.col.saturating_sub(1));
+        let arrows = "^".repeat(text.len());
+        format!("{line}\n{spaces}{arrows}")
+    }
+
+    fn line_of(&self, token: &Token) -> String {
+        let mut start = token.index;
+        loop {
+            if let Some(&c) = self.text.get(start) {
+                if c == '\n' {
+                    start += 1;
+                    break;
+                }
+            } else {
+                start = 0;
+                break;
+            }
+
+            if start == 0 {
+                break;
+            }
+            start -= 1;
+        }
+
+        let mut end = token.index + token.len;
+        loop {
+            if let Some(&c) = self.text.get(end) {
+                if c == '\n' {
+                    break;
+                }
+            } else {
+                break;
+            }
+            end += 1;
+        }
+
+        self.range_to_string(start..end)
+    }
+
+    fn text_of(&self, token: &Token) -> String {
+        self.range_to_string((token.index)..(token.index + token.len))
     }
 
     pub fn truncate(&mut self, new_start: usize) {
@@ -594,5 +639,19 @@ else
                 Token::new(Tok::String("\"".into()), 1, 6, 5, 4)
             ]
         )
+    }
+
+    #[test]
+    fn test_token_context() {
+        let tokens = tokenise("if true then").unwrap();
+        let token = tokens.as_slice().get(1).unwrap();
+        assert_eq!(
+            tokens.context(token),
+            r#"
+if true then
+   ^^^^
+            "#
+            .trim()
+        );
     }
 }
