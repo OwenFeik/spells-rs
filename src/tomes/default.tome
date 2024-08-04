@@ -16,6 +16,11 @@ EXPT() = PROF() * 2
 _cp = 0; _sp = 0; _gp = 0; _ep = 0; _pp = 0
 _use_electrum = false
 _total_wealth_cp() = _cp + _sp * 10 + _gp * 10 + _ep * 10 + _pp * 10
+gain_cp(cp) = _cp = _cp + cp
+gain_sp(sp) = _sp = _sp + sp
+gain_ep(ep) = _ep = _ep + ep
+gain_gp(gp) = _gp = _gp + gp
+gain_pp(pp) = _pp = _pp + pp
 spend_cp(cp) =
     if _cp >= cp then
         _cp = _cp - cp ; true
@@ -38,7 +43,7 @@ spend_sp(sp) =
         false
 spend_ep(ep) =
     if !_use_electrum then
-        spend_sp(5)
+        spend_sp(5 * ep)
     else if _ep >= ep then
         _ep = _ep - ep ; true
     else if _total_wealth_cp() < ep * 10 * 5 then
@@ -69,5 +74,11 @@ spend_pp(pp) =
         _pp = _pp + 1 ; spend_pp(pp)
     else
         false
+wealth() =
+    print(
+        _cp + "cp, " + _sp + "sp, "
+        + (if _use_electrum then _ep + "ep, " else "")
+        + _gp + "gp, " + _pp + "pp"
+    )
 
 roll_avg(roll) = quantity(roll) * (dice(roll) + 1) / 2

@@ -134,6 +134,9 @@ impl Value {
 
     pub fn string(self) -> Res<String> {
         match self {
+            Value::Bool(v) => Ok(v.to_string()),
+            Value::Natural(v) => Ok(v.to_string()),
+            Value::Decimal(v) => Ok(v.to_string()),
             Value::String(string) => Ok(string),
             _ => Err(format!("{self} cannot be interpreted as a string.")),
         }

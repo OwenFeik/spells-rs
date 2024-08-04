@@ -73,7 +73,7 @@ impl Outcome {
     }
 
     pub fn add(mut self, mut other: Outcome) -> Res<Outcome> {
-        if matches!(self.value, Value::String(..)) {
+        if matches!(self.value, Value::String(..)) || matches!(other.value, Value::String(..)) {
             let lhs = self.value.string()?;
             let rhs = other.value.string()?;
 
