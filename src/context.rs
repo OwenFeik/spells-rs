@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, rc::Rc, sync::atomic::AtomicUsize};
+use std::{collections::HashMap, fmt::Display, process::exit, rc::Rc, sync::atomic::AtomicUsize};
 
 use crate::{
     ast::Ast,
@@ -87,7 +87,8 @@ impl Context {
 
         // Add default globals.
         if let Err(e) = eval_tome(include_str!("tomes/default.tome"), self) {
-            panic!("Failed to evaluate default.tome: {}", e);
+            eprintln!("Failed to evaluate default.tome:\n{}", e);
+            exit(1);
         }
 
         self.push_scope(); // Add user scope.

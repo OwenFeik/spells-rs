@@ -19,7 +19,7 @@ _total_wealth_cp() = _cp + _sp * 10 + _gp * 10 + _ep * 10 + _pp * 10
 spend_cp(cp) =
     if _cp >= cp then
         _cp = _cp - cp ; true
-    else if _total_wealth_cp() >= cp & spend_sp(1) then
+    else if (_sp > 0 | _ep > 0 | _gp > 0 | _pp > 0) & spend_sp(1) then
         _cp = _cp + 10 ; spend_cp(cp)
     else
         false
@@ -28,11 +28,11 @@ spend_sp(sp) =
         _sp = _sp - sp ; true
     else if _total_wealth_cp() < sp * 10 then
         false
-    else if spend_cp(10) then
+    else if _cp >= 10 & spend_cp(10) then
         _sp = _sp + 1 ; spend_sp(sp)
-    else if _use_electrum & spend_ep(1) then
+    else if _use_electrum & (_ep > 0 | _gp > 0 | _pp > 0) & spend_ep(1) then
         _sp = _sp + 5 ; spend_sp(sp)
-    else if spend_gp(1) then
+    else if (_gp > 0 | _pp > 0) & spend_gp(1) then
         _sp = _sp + 10 ; spend_sp(sp)
     else
         false
@@ -41,11 +41,11 @@ spend_ep(ep) =
         spend_sp(5)
     else if _ep >= ep then
         _ep = _ep - ep ; true
-    else if _total_wealth_cp() < ep * 5 * 10 then
+    else if _total_wealth_cp() < ep * 10 * 5 then
         false
-    else if spend_sp(5) then
+    else if (_sp >= 5 | _cp >= 50) & spend_sp(5) then
         _ep = _ep + 1 ; spend_ep(ep)
-    else if spend_gp(1) then
+    else if (_gp > 0 | _pp > 0) & spend_gp(1) then
         _ep = _ep + 2 ; spend_ep(ep)
     else
         false
@@ -54,9 +54,9 @@ spend_gp(gp) =
         _gp = _gp - gp ; true
     else if _total_wealth_cp() < gp * 10 * 10 then
         false
-    else if spend_ep(2) then
+    else if (_ep >= 2 | _sp >= 10 | _cp >= 100) & spend_ep(2) then
         _gp = _gp + 1 ; spend_gp(gp)
-    else if spend_pp(1) then
+    else if _pp > 0 & spend_pp(1) then
         _gp = _gp + 10 ; spend_gp(gp)
     else
         false

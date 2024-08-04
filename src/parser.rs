@@ -51,23 +51,24 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse(self) -> Res<Ast> {
-        let (ast, unused_input) = self.parse_first()?;
-        if unused_input.is_empty() {
-            Ok(ast)
+    fn parse(mut self) -> Res<Ast> {
+        self.parse_first()?;
+        if self.input.is_empty() {
+            Ok(self.ast)
         } else {
-            err("Input not consumed.")
+            let token = self.input.first().unwrap();
+            self.token_err(token, "Input not consumed.")
         }
     }
 
-    fn parse_first(mut self) -> Res<(Ast, &'a [Token])> {
+    fn parse_first(&mut self) -> Res<()> {
         if self.input.is_empty() {
-            return Ok((self.ast, self.input));
+            return Ok(());
         }
 
         self.operators.push(Operator::Sentinel);
         self.expr()?;
-        Ok((self.ast, self.input))
+        Ok(())
     }
 
     fn expr(&mut self) -> Res<usize> {
@@ -95,21 +96,21 @@ impl<'a> Parser<'a> {
     fn term(&mut self) -> Res<usize> {
         let token = self.next()?.clone();
         let id = match token.inner() {
-            Tok::Identifier(name) => {
-                if self.next_is(Tok::ParenOpen) {
-                    self.call(name.clone())
-                } else {
-                    match name.as_str() {
-                        "if" => self.conditional(),
-                        "then" | "else" => {
-                            self.token_err(&token, format!("{name} must follow an opening if."))
-                        }
-                        "true" => Ok(self.push_operand(Node::Value(Value::Bool(true)))),
-                        "false" => Ok(self.push_operand(Node::Value(Value::Bool(false)))),
-                        _ => Ok(self.push_operand(Node::Identifier(name.clone()))),
+            Tok::Identifier(name) => match name.as_str() {
+                "if" => self.conditional(),
+                "then" | "else" => {
+                    self.token_err(&token, format!("{name} must follow an opening if."))
+                }
+                "true" => Ok(self.push_operand(Node::Value(Value::Bool(true)))),
+                "false" => Ok(self.push_operand(Node::Value(Value::Bool(false)))),
+                _ => {
+                    if self.next_is(Tok::ParenOpen) {
+                        self.call(name.clone())
+                    } else {
+                        Ok(self.push_operand(Node::Identifier(name.clone())))
                     }
                 }
-            }
+            },
             Tok::Natural(n) => Ok(self.push_operand(Node::Value(Value::Natural(*n as i64)))),
             Tok::Decimal(v) => Ok(self.push_operand(Node::Value(Value::Decimal(*v)))),
             Tok::Roll(q, d) => Ok(self.push_operand(Node::Value(Value::Roll(Roll::new(*q, *d))))),
@@ -298,7 +299,9 @@ pub fn parse(input: &TokenList) -> Res<Ast> {
 }
 
 pub fn parse_first(input: &TokenList) -> Res<(Ast, &[Token])> {
-    Parser::new(input).parse_first()
+    let mut parser = Parser::new(input);
+    parser.parse_first()?;
+    Ok((parser.ast, parser.input))
 }
 
 #[cfg(test)]
@@ -308,7 +311,13 @@ mod test {
     use super::*;
 
     fn ast_of(input: &str) -> Ast {
-        parse(&tokenise(input).unwrap()).unwrap()
+        match parse(&tokenise(input).unwrap()) {
+            Ok(ast) => ast,
+            Err(e) => {
+                eprintln!("Parsing failed:\n{e}");
+                panic!();
+            }
+        }
     }
 
     fn check_exprs(input: &str, expected: Vec<Node>) {
@@ -813,6 +822,35 @@ mod test {
                 Node::Binary(3, Operator::Add, 4),
                 Node::Binary(2, Operator::Assign, 5),
                 Node::If(1, 6, None),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_complicated_if() {
+        check_exprs(
+            "if (_sp > 0 | _ep > 0 | _gp > 0 | _pp > 0) & spend_sp(1) then true",
+            vec![
+                Node::name("_sp"),
+                Node::Value(Value::Natural(0)),
+                Node::Binary(0, Operator::GreaterThan, 1),
+                Node::name("_ep"),
+                Node::Value(Value::Natural(0)),
+                Node::Binary(3, Operator::GreaterThan, 4),
+                Node::Binary(2, Operator::Or, 5),
+                Node::name("_gp"),
+                Node::Value(Value::Natural(0)),
+                Node::Binary(7, Operator::GreaterThan, 8),
+                Node::Binary(6, Operator::Or, 9),
+                Node::name("_pp"),
+                Node::Value(Value::Natural(0)),
+                Node::Binary(11, Operator::GreaterThan, 12),
+                Node::Binary(10, Operator::Or, 13),
+                Node::Value(Value::Natural(1)),
+                Node::Call("spend_sp".into(), vec![15]),
+                Node::Binary(14, Operator::And, 16),
+                Node::Value(Value::Bool(true)),
+                Node::If(17, 18, None),
             ],
         )
     }

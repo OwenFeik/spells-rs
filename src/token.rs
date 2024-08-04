@@ -642,7 +642,7 @@ else
     }
 
     #[test]
-    fn test_token_context() {
+    fn test_token_context_1() {
         let tokens = tokenise("if true then").unwrap();
         let token = tokens.as_slice().get(1).unwrap();
         assert_eq!(
@@ -652,6 +652,61 @@ if true then
    ^^^^
             "#
             .trim()
+        );
+    }
+
+    #[test]
+    fn test_token_context_2() {
+        let tokens = tokenise("    else if (a > 0 | b > 0 | c > 0) & cond() then").unwrap();
+        let token = tokens.as_slice().last().unwrap();
+        assert_eq!(
+            tokens.context(token),
+            "    else if (a > 0 | b > 0 | c > 0) & cond() then\n                                             ^^^^"
+        );
+    }
+
+    #[test]
+    fn test_token_context_multiline() {
+        let tokens = tokenise(
+            r#"
+if a then
+    b
+else if c | d then
+    e
+else
+    f
+        "#
+            .trim(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            tokens
+                .as_slice()
+                .iter()
+                .map(|t| t.tok.clone())
+                .collect::<Vec<Tok>>(),
+            vec![
+                Tok::identifier("if"),
+                Tok::identifier("a"),
+                Tok::identifier("then"),
+                Tok::identifier("b"),
+                Tok::identifier("else"),
+                Tok::identifier("if"),
+                Tok::identifier("c"),
+                Tok::Operator(Operator::Or),
+                Tok::identifier("d"),
+                Tok::identifier("then"),
+                Tok::identifier("e"),
+                Tok::identifier("else"),
+                Tok::identifier("f"),
+            ]
+        );
+        let token = tokens.as_slice().get(tokens.len() - 4).unwrap();
+
+        assert_eq!(
+            tokens.context(token),
+            "else if c | d then\n              ^^^^"
         );
     }
 }
