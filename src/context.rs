@@ -46,16 +46,22 @@ impl Display for Function {
     }
 }
 
+enum ScopeObject {
+    Value(Value),
+    Function(Function),
+    Child(usize),
+}
+
 struct Scope {
-    variables: HashMap<String, Value>,
-    functions: HashMap<String, Rc<Function>>,
+    parent: usize,
+    objects: HashMap<String, ScopeObject>,
 }
 
 impl Scope {
-    fn new() -> Self {
+    fn new(parent: usize) -> Self {
         Self {
-            variables: HashMap::new(),
-            functions: HashMap::new(),
+            parent,
+            objects: HashMap::new(),
         }
     }
 }
@@ -71,7 +77,7 @@ impl Context {
 
     fn new() -> Self {
         Self {
-            scopes: vec![Scope::new()],
+            scopes: vec![Scope::new(usize::MAX)],
             initialised: false,
         }
     }
@@ -95,44 +101,42 @@ impl Context {
         self.initialised = true;
     }
 
-    fn definition_scope(&mut self) -> &mut Scope {
-        let index = if self.initialised {
-            Self::USER_SCOPE_INDEX
-        } else {
-            Self::GLOBAL_SCOPE_INDEX
-        };
-        self.scopes.get_mut(index).expect("Permanent scope popped.")
-    }
-
     fn push_scope(&mut self) -> &mut Scope {
-        self.scopes.push(Scope::new());
-        self.scopes.last_mut().unwrap()
+        self.scope.push(Scope::new());
+        self.scope.last_mut().unwrap()
     }
 
     fn pop_scope(&mut self) {
         // Never pop user or global scope.
-        if self.scopes.len() > 2 {
-            self.scopes.pop();
+        if self.scope.len() > 2 {
+            self.scope.pop();
         }
     }
 
-    pub fn get_variable(&self, name: &str) -> Option<Value> {
-        self.scopes
-            .iter()
-            .rev()
-            .map(|scope| scope.variables.get(name).cloned())
-            .find(Option::is_some)
-            .flatten()
+    fn lookup(&self, scope: usize, name: &str) -> Option<&ScopeObject> {
+        let scope = self.scopes.get(scope)?;
+        scope
+            .objects
+            .get(name)
+            .or_else(|| self.lookup(scope.parent, name))
     }
 
-    pub fn set_variable<S: ToString>(&mut self, name: S, value: Value) {
+    pub fn get_variable(&self, scope: usize, name: &str) -> Option<&Value> {
+        if let ScopeObject::Value(val) = self.lookup(scope, name)? {
+            Some(val)
+        } else {
+            None
+        }
+    }
+
+    pub fn set_variable<S: ToString>(&mut self, scope: usize, name: S, value: Value) {
         self.definition_scope()
             .variables
             .insert(name.to_string(), value);
     }
 
     fn get_function(&self, name: &str) -> Option<Rc<Function>> {
-        self.scopes
+        self.scope
             .iter()
             .rev()
             .map(|scope| scope.functions.get(name).cloned())
@@ -165,7 +169,7 @@ impl Context {
     pub fn dump_to_string(&self) -> Res<String> {
         let mut ret = String::new();
 
-        let Some(user_scope) = self.scopes.last() else {
+        let Some(user_scope) = self.scope.last() else {
             return err("No scope available to dump to string.");
         };
 
@@ -183,7 +187,7 @@ impl Context {
     }
 
     pub fn load_from(&mut self, from: Context) -> Res<()> {
-        let mut scopes = from.scopes;
+        let mut scopes = from.scope;
         if !scopes.is_empty() {
             *self.definition_scope() = scopes.swap_remove(scopes.len() - 1);
             Ok(())
