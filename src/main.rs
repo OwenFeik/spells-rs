@@ -2,6 +2,9 @@
 #![feature(if_let_guard)]
 #![feature(let_chains)]
 
+use context::Context;
+use eval::evaluate_tome;
+
 mod ast;
 mod builtins;
 mod commands;
@@ -36,18 +39,13 @@ fn parse(input: &str) -> Res<ast::Ast> {
 }
 
 fn eval(input: &str, context: &mut context::Context) -> Res<outcome::Outcome> {
-    eval::evaluate(&parse(input)?, context).and_then(|oc| oc.resolved())
+    eval::evaluate(&parse(input)?, context, Context::GLOBAL_SCOPE).and_then(|oc| oc.resolved())
 }
 
 fn eval_tome(input: &str, context: &mut context::Context) -> Res<()> {
-    let mut tokens = token::tokenise(input)?;
-    while !tokens.is_empty() {
-        let (ast, rest) = parser::parse_first(&tokens)?;
-        eval::evaluate(&ast, context)?;
-        tokens.truncate(tokens.len().saturating_sub(rest.len()));
-    }
-
-    Ok(())
+    let tokens = token::tokenise(input)?;
+    let statements = parser::parse_tome(tokens)?;
+    evaluate_tome(&statements, context, Context::GLOBAL_SCOPE)
 }
 
 fn interpret(input: &str, context: &mut context::Context) {
@@ -59,12 +57,10 @@ fn interpret(input: &str, context: &mut context::Context) {
 
 fn load_cache(state: &mut AppState) -> Res<()> {
     if let Ok((cache, _)) = load::load(load::SaveTarget::Title(CACHE_TITLE.into())) {
-        if let Err(e) = state.cache.load_from(cache) {
-            return Err(format!("Error loading cache: {e}"));
-        }
+        state.cache = cache;
     }
 
-    if let Some(val) = state.cache.get_variable(load::SAVE_PATH_VAR) {
+    if let Some(val) = state.cache.get_global(load::SAVE_PATH_VAR).cloned() {
         if let Err(e) = commands::load(&[], state) {
             return Err(format!("Error loading {val}: {e}"));
         }

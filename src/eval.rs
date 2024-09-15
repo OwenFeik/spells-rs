@@ -5,6 +5,12 @@ use super::{
     value::Value,
 };
 
+struct EvalCtx<'a> {
+    ast: &'a Ast,
+    context: &'a mut Context,
+    scope: usize,
+}
+
 pub fn check_argument_count(name: &str, count: usize, args: &[Value]) -> Res<()> {
     if count != args.len() {
         err(format!(
@@ -15,57 +21,55 @@ pub fn check_argument_count(name: &str, count: usize, args: &[Value]) -> Res<()>
     }
 }
 
-fn define(
-    ast: &Ast,
-    context: &mut Context,
-    name: &str,
-    args: &[usize],
-    definition: usize,
-) -> Res<Outcome> {
+fn define(ctx: &mut EvalCtx, name: &str, args: &[usize], definition: usize) -> Res<Outcome> {
     let mut parameters = Vec::new();
     for &arg in args {
-        let Some(Node::Identifier(name)) = ast.get(arg) else {
-            return err(format!("Invalid argument signature: {:?}.", ast.get(arg)));
+        let Some(Node::Identifier(name)) = ctx.ast.get(arg) else {
+            return err(format!(
+                "Invalid argument signature: {:?}.",
+                ctx.ast.get(arg)
+            ));
         };
         parameters.push(name.clone());
     }
 
-    let Some(body) = ast.subtree(definition) else {
+    let Some(body) = ctx.ast.subtree(definition) else {
         return err("Failed to get subtree for definition.");
     };
 
-    context.define_function(name, body, parameters);
+    ctx.context
+        .define_function(ctx.scope, name, body, parameters);
     Ok(Outcome::empty())
 }
 
-fn assign(ast: &Ast, context: &mut Context, destination: usize, definition: usize) -> Res<Outcome> {
-    match ast.get(destination) {
+fn assign(ctx: &mut EvalCtx, destination: usize, definition: usize) -> Res<Outcome> {
+    match ctx.ast.get(destination) {
         Some(Node::Identifier(name)) => {
-            let value = evaluate_node(ast, context, definition)?.value;
-            context.set_variable(name, value.clone());
+            let value = evaluate_node(ctx, definition)?.value;
+            ctx.context.set_variable(ctx.scope, name, value.clone());
             Ok(Outcome::new(value))
         }
-        Some(Node::Call(name, args)) => define(ast, context, name, args, definition),
+        Some(Node::Call(name, args)) => define(ctx, name, args, definition),
         invalid => err(format!("{invalid:?} is not a valid assignment target.")),
     }
 }
 
-fn call(ast: &Ast, context: &mut Context, name: &str, args: &[usize]) -> Res<Outcome> {
+fn call(ctx: &mut EvalCtx, name: &str, args: &[usize]) -> Res<Outcome> {
     let mut arg_values = Vec::new();
     for arg in args {
-        arg_values.push(evaluate_node(ast, context, *arg)?.value);
+        arg_values.push(evaluate_node(ctx, *arg)?.value);
     }
-    context.call(name, arg_values)
+    ctx.context.call(ctx.scope, name, arg_values)
 }
 
 /// Attempts to return the value of the given name in the current context. If
 /// not found attempts to call a function with the given name with no
 /// parameters.
-fn variable(ast: &Ast, context: &mut Context, name: &str) -> Res<Outcome> {
-    if let Some(value) = context.get_variable(name) {
-        return Ok(Outcome::new(value));
+fn variable(ctx: &mut EvalCtx, name: &str) -> Res<Outcome> {
+    if let Some(value) = ctx.context.get_variable(ctx.scope, name) {
+        return Ok(Outcome::new(value.clone()));
     } else {
-        let call_res = call(ast, context, name, &[]);
+        let call_res = call(ctx, name, &[]);
         if call_res.is_ok() {
             return call_res;
         }
@@ -73,21 +77,21 @@ fn variable(ast: &Ast, context: &mut Context, name: &str) -> Res<Outcome> {
     err(format!("Undefined variable: {name}."))
 }
 
-fn list(ast: &Ast, context: &mut Context, values: &[usize]) -> Res<Outcome> {
+fn list(ctx: &mut EvalCtx, values: &[usize]) -> Res<Outcome> {
     let mut list = Vec::new();
     for &index in values {
-        let val = evaluate_node(ast, context, index)?;
+        let val = evaluate_node(ctx, index)?;
         list.push(val.value);
     }
     Ok(Outcome::new(Value::List(list)))
 }
 
-fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize) -> Res<Outcome> {
+fn binary(ctx: &mut EvalCtx, op: Operator, lhs: usize, rhs: usize) -> Res<Outcome> {
     if matches!(op, Operator::Assign) {
-        assign(ast, context, lhs, rhs)
+        assign(ctx, lhs, rhs)
     } else {
-        let lhs_val = evaluate_node(ast, context, lhs)?;
-        let rhs_val = evaluate_node(ast, context, rhs)?;
+        let lhs_val = evaluate_node(ctx, lhs)?;
+        let rhs_val = evaluate_node(ctx, rhs)?;
         match op {
             Operator::Assign => err("Operator::Assign doesn't match Operator::Assign."),
             Operator::Discard => Ok(rhs_val),
@@ -113,8 +117,8 @@ fn binary(ast: &Ast, context: &mut Context, op: Operator, lhs: usize, rhs: usize
     }
 }
 
-fn unary(ast: &Ast, context: &mut Context, op: Operator, arg: usize) -> Res<Outcome> {
-    let val = evaluate_node(ast, context, arg)?;
+fn unary(ctx: &mut EvalCtx, op: Operator, arg: usize) -> Res<Outcome> {
+    let val = evaluate_node(ctx, arg)?;
     match op {
         Operator::Not => val.not(),
         Operator::Neg => val.neg(),
@@ -124,45 +128,58 @@ fn unary(ast: &Ast, context: &mut Context, op: Operator, arg: usize) -> Res<Outc
     }
 }
 
-fn condition(
-    ast: &Ast,
-    context: &mut Context,
-    cond: usize,
-    block: usize,
-    fail: Option<usize>,
-) -> Res<Outcome> {
-    let condition = evaluate_node(ast, context, cond)?.value.bool()?;
+fn condition(ctx: &mut EvalCtx, cond: usize, block: usize, fail: Option<usize>) -> Res<Outcome> {
+    let condition = evaluate_node(ctx, cond)?.value.bool()?;
     if condition {
-        evaluate_node(ast, context, block)
+        evaluate_node(ctx, block)
     } else if let Some(node) = fail {
-        evaluate_node(ast, context, node)
+        evaluate_node(ctx, node)
     } else {
         Ok(Outcome::new(Value::Empty))
     }
 }
 
-fn evaluate_node(ast: &Ast, context: &mut Context, index: usize) -> Res<Outcome> {
-    if let Some(expr) = ast.get(index) {
+fn evaluate_node(ctx: &mut EvalCtx, index: usize) -> Res<Outcome> {
+    if let Some(expr) = ctx.ast.get(index) {
         match expr {
             Node::Value(val) => Ok(Outcome::new(val.clone())),
-            Node::Identifier(name) => variable(ast, context, name),
-            Node::List(values) => list(ast, context, values),
-            &Node::Binary(lhs, op, rhs) => binary(ast, context, op, lhs, rhs),
-            &Node::Unary(arg, op) => unary(ast, context, op, arg),
-            Node::Call(name, args) => call(ast, context, name, args),
-            &Node::If(cond, expr, fail) => condition(ast, context, cond, expr, fail),
+            Node::Identifier(name) => variable(ctx, name),
+            Node::List(values) => list(ctx, values),
+            &Node::Binary(lhs, op, rhs) => binary(ctx, op, lhs, rhs),
+            &Node::Unary(arg, op) => unary(ctx, op, arg),
+            Node::Call(name, args) => call(ctx, name, args),
+            &Node::If(cond, expr, fail) => condition(ctx, cond, expr, fail),
         }
     } else {
         err("Attempted to evaluate expression which did not exist.")
     }
 }
 
-pub fn evaluate(ast: &Ast, context: &mut Context) -> Res<Outcome> {
+pub fn evaluate(ast: &Ast, context: &mut Context, scope: usize) -> Res<Outcome> {
     if ast.is_empty() {
         Ok(Outcome::empty())
     } else {
-        evaluate_node(ast, context, ast.start())
+        let ctx = &mut EvalCtx {
+            ast,
+            context,
+            scope,
+        };
+        evaluate_node(ctx, ast.start())
     }
+}
+
+pub fn evaluate_tome(statements: &[Ast], context: &mut Context, scope: usize) -> Res<()> {
+    for statement in statements {
+        evaluate_node(
+            &mut EvalCtx {
+                ast: statement,
+                context,
+                scope,
+            },
+            statement.start(),
+        )?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -182,7 +199,7 @@ mod test {
     }
 
     fn eval_value(ast: Ast) -> Value {
-        evaluate_node(&ast, &mut Context::empty(), ast.start())
+        evaluate(&ast, &mut Context::empty(), Context::GLOBAL_SCOPE)
             .unwrap()
             .value
     }
@@ -225,10 +242,14 @@ mod test {
 
     #[test]
     fn test_rolls() {
-        let result = evaluate(&ast_of("4d6k3 + 2d4 + d20d + 2d10a"), &mut Context::empty())
-            .unwrap()
-            .resolved()
-            .unwrap();
+        let result = evaluate(
+            &ast_of("4d6k3 + 2d4 + d20d + 2d10a"),
+            &mut Context::empty(),
+            Context::GLOBAL_SCOPE,
+        )
+        .unwrap()
+        .resolved()
+        .unwrap();
         let rolls: Vec<Roll> = result.rolls.into_iter().map(|oc| oc.roll).collect();
         assert_eq!(
             rolls,
@@ -272,13 +293,8 @@ mod test {
 
     #[test]
     fn test_eval() {
-        let ast = ast_of("2 + 3 - 4 * 5");
         assert_eq!(
-            evaluate(&ast, &mut Context::empty())
-                .unwrap()
-                .value
-                .decimal()
-                .unwrap(),
+            eval_value(ast_of("2 + 3 - 4 * 5")).decimal().unwrap(),
             2.0 + 3.0 - 4.0 * 5.0
         );
     }
@@ -287,9 +303,14 @@ mod test {
     fn test_assignment() {
         let mut context = Context::empty();
         let ast = ast_of("var = 2 + 3 - 1");
-        evaluate_node(&ast, &mut context, ast.start()).unwrap();
+        evaluate(&ast, &mut context, Context::GLOBAL_SCOPE).unwrap();
         assert_eq!(
-            context.get_variable("var").unwrap().natural().unwrap(),
+            context
+                .get_variable(Context::GLOBAL_SCOPE, "var")
+                .cloned()
+                .unwrap()
+                .natural()
+                .unwrap(),
             2 + 3 - 1
         );
     }
@@ -316,18 +337,43 @@ mod test {
     fn test_discard_assignment() {
         let context = &mut Context::empty();
         assert_eq!(eval("a = 2; b = 3", context).unwrap(), Outcome::nat(3));
-        assert_eq!(context.get_variable("a"), Some(Value::Natural(2)));
-        assert_eq!(context.get_variable("b"), Some(Value::Natural(3)));
+        assert_eq!(
+            context.get_variable(Context::GLOBAL_SCOPE, "a").cloned(),
+            Some(Value::Natural(2))
+        );
+        assert_eq!(
+            context.get_variable(Context::GLOBAL_SCOPE, "b").cloned(),
+            Some(Value::Natural(3))
+        );
     }
 
     #[test]
     fn test_multiple_statement_function() {
         let context = &mut Context::empty();
         assert_eq!(eval("a = 1; b = 2", context).unwrap(), Outcome::nat(2));
+        dbg!(&context);
         eval("incr() = a = a + 1; b = b + 1", context).unwrap();
+        dbg!(&context);
         eval("incr()", context).unwrap();
-        assert_eq!(context.get_variable("a").unwrap().natural().unwrap(), 2);
-        assert_eq!(context.get_variable("b").unwrap().natural().unwrap(), 3);
+        dbg!(&context);
+        assert_eq!(
+            context
+                .get_variable(Context::GLOBAL_SCOPE, "a")
+                .cloned()
+                .unwrap()
+                .natural()
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            context
+                .get_variable(Context::GLOBAL_SCOPE, "b")
+                .cloned()
+                .unwrap()
+                .natural()
+                .unwrap(),
+            3
+        );
     }
 
     #[test]
@@ -341,6 +387,12 @@ mod test {
             &mut context,
         )
         .unwrap();
-        assert_eq!(context.get_variable("a").unwrap(), Value::Natural(4));
+        assert_eq!(
+            context
+                .get_variable(Context::GLOBAL_SCOPE, "a")
+                .cloned()
+                .unwrap(),
+            Value::Natural(4)
+        );
     }
 }

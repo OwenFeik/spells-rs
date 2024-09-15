@@ -1,8 +1,7 @@
-use std::{collections::HashMap, fmt::Display, process::exit, rc::Rc, sync::atomic::AtomicUsize};
+use std::{collections::HashMap, fmt::Display, process::id, rc::Rc, sync::atomic::AtomicUsize};
 
 use crate::{
     ast::Ast,
-    err,
     eval::{check_argument_count, evaluate},
     eval_tome,
     outcome::Outcome,
@@ -10,6 +9,7 @@ use crate::{
     Res,
 };
 
+#[derive(Debug)]
 struct Function {
     name: String,
     body: Ast,
@@ -46,12 +46,14 @@ impl Display for Function {
     }
 }
 
+#[derive(Debug)]
 enum ScopeObject {
     Value(Value),
-    Function(Function),
+    Function(Rc<Function>),
     Child(usize),
 }
 
+#[derive(Debug)]
 struct Scope {
     parent: usize,
     objects: HashMap<String, ScopeObject>,
@@ -66,51 +68,22 @@ impl Scope {
     }
 }
 
+#[derive(Debug)]
 pub struct Context {
     scopes: Vec<Scope>,
-    initialised: bool,
 }
 
 impl Context {
-    const GLOBAL_SCOPE_INDEX: usize = 0;
-    const USER_SCOPE_INDEX: usize = 1;
+    pub const GLOBAL_SCOPE: usize = 0;
 
     fn new() -> Self {
         Self {
             scopes: vec![Scope::new(usize::MAX)],
-            initialised: false,
         }
     }
 
     pub fn empty() -> Self {
         Self::new()
-    }
-
-    fn initialise_globals(&mut self) {
-        if self.initialised {
-            return;
-        }
-
-        // Add default globals.
-        if let Err(e) = eval_tome(include_str!("tomes/default.tome"), self) {
-            eprintln!("Failed to evaluate default.tome:\n{}", e);
-            exit(1);
-        }
-
-        self.push_scope(); // Add user scope.
-        self.initialised = true;
-    }
-
-    fn push_scope(&mut self) -> &mut Scope {
-        self.scope.push(Scope::new());
-        self.scope.last_mut().unwrap()
-    }
-
-    fn pop_scope(&mut self) {
-        // Never pop user or global scope.
-        if self.scope.len() > 2 {
-            self.scope.pop();
-        }
     }
 
     fn lookup(&self, scope: usize, name: &str) -> Option<&ScopeObject> {
@@ -121,6 +94,26 @@ impl Context {
             .or_else(|| self.lookup(scope.parent, name))
     }
 
+    fn child_scope(&mut self, parent: usize) -> usize {
+        let scope = Scope::new(parent);
+        let idx = self.scopes.len();
+        self.scopes.push(scope);
+        idx
+    }
+
+    fn scope_stack(&self, mut idx: usize) -> Vec<usize> {
+        let mut stack = Vec::new();
+        while idx != usize::MAX {
+            if let Some(scope) = self.scopes.get(idx) {
+                stack.push(idx);
+                idx = scope.parent;
+            } else {
+                break;
+            }
+        }
+        stack
+    }
+
     pub fn get_variable(&self, scope: usize, name: &str) -> Option<&Value> {
         if let ScopeObject::Value(val) = self.lookup(scope, name)? {
             Some(val)
@@ -129,37 +122,61 @@ impl Context {
         }
     }
 
+    pub fn get_global(&self, name: &str) -> Option<&Value> {
+        self.get_variable(Self::GLOBAL_SCOPE, name)
+    }
+
     pub fn set_variable<S: ToString>(&mut self, scope: usize, name: S, value: Value) {
-        self.definition_scope()
-            .variables
-            .insert(name.to_string(), value);
+        let name = name.to_string();
+        let mut set_scope = scope;
+        for idx in self.scope_stack(scope) {
+            if let Some(scope) = self.scopes.get_mut(scope) {
+                if scope.objects.contains_key(&name) {
+                    set_scope = idx;
+                    break;
+                }
+            }
+        }
+
+        self.scopes
+            .get_mut(set_scope)
+            .expect("Attempted to set variable in scope which doesn't exist.")
+            .objects
+            .insert(name.to_string(), ScopeObject::Value(value));
     }
 
-    fn get_function(&self, name: &str) -> Option<Rc<Function>> {
-        self.scope
-            .iter()
-            .rev()
-            .map(|scope| scope.functions.get(name).cloned())
-            .find(Option::is_some)
-            .flatten()
+    fn get_function(&self, scope: usize, name: &str) -> Option<Rc<Function>> {
+        if let ScopeObject::Function(func) = self.lookup(scope, name)? {
+            Some(func.clone())
+        } else {
+            None
+        }
     }
 
-    pub fn define_function<S: ToString>(&mut self, name: S, body: Ast, parameters: Vec<String>) {
-        let function = Function::new(name, body, parameters);
-        self.definition_scope()
-            .functions
-            .insert(function.name.clone(), Rc::new(function));
+    pub fn define_function<S: ToString>(
+        &mut self,
+        scope: usize,
+        name: S,
+        body: Ast,
+        parameters: Vec<String>,
+    ) {
+        let function = Function::new(name.to_string(), body, parameters);
+        self.scopes
+            .get_mut(scope)
+            .expect("Attempted to define function in scope that doesn't exist.")
+            .objects
+            .insert(name.to_string(), ScopeObject::Function(Rc::new(function)));
     }
 
-    pub fn call(&mut self, name: &str, args: Vec<Value>) -> Res<Outcome> {
-        if let Some(function) = self.get_function(name) {
-            let scope = self.push_scope();
+    pub fn call(&mut self, scope: usize, name: &str, args: Vec<Value>) -> Res<Outcome> {
+        if let Some(function) = self.get_function(scope, name) {
+            let func_scope = self.child_scope(scope);
             check_argument_count(name, function.parameters.len(), &args)?;
             for (name, value) in function.parameters.iter().zip(args) {
-                scope.variables.insert(name.clone(), value);
+                self.set_variable(func_scope, name, value);
             }
-            let ret = evaluate(&function.body, self);
-            self.pop_scope();
+            let ret = evaluate(&function.body, self, func_scope);
+            self.scopes.pop();
             ret
         } else {
             crate::builtins::call(name, args)
@@ -169,38 +186,29 @@ impl Context {
     pub fn dump_to_string(&self) -> Res<String> {
         let mut ret = String::new();
 
-        let Some(user_scope) = self.scope.last() else {
-            return err("No scope available to dump to string.");
-        };
+        // TODO establish module syntax.
+        // let Some(user_scope) = self.scope.last() else {
+        //     return err("No scope available to dump to string.");
+        // };
 
-        // Sort functions by definition order.
-        let mut functions: Vec<&Rc<Function>> = user_scope.functions.values().collect();
-        functions.sort_by(|a, b| (a.id).cmp(&b.id));
-        for func in functions {
-            ret += &format!("{func}\n");
-        }
+        // // Sort functions by definition order.
+        // let mut functions: Vec<&Rc<Function>> = user_scope.functions.values().collect();
+        // functions.sort_by(|a, b| (a.id).cmp(&b.id));
+        // for func in functions {
+        //     ret += &format!("{func}\n");
+        // }
 
-        for (k, v) in &user_scope.variables {
-            ret += &format!("{k} = {v}\n");
-        }
+        // for (k, v) in &user_scope.variables {
+        //     ret += &format!("{k} = {v}\n");
+        // }
         Ok(ret)
-    }
-
-    pub fn load_from(&mut self, from: Context) -> Res<()> {
-        let mut scopes = from.scope;
-        if !scopes.is_empty() {
-            *self.definition_scope() = scopes.swap_remove(scopes.len() - 1);
-            Ok(())
-        } else {
-            err("Unable to load from empty context.")
-        }
     }
 }
 
 impl Default for Context {
     fn default() -> Self {
         let mut context = Self::new();
-        context.initialise_globals();
+        eval_tome(include_str!("tomes/default.tome"), &mut context).unwrap();
         context
     }
 }
@@ -215,7 +223,7 @@ mod test {
     fn test_definition() {
         let mut context = Context::empty();
         eval("func(x, y) = x + y", &mut context).unwrap();
-        let func = context.get_function("func").unwrap();
+        let func = context.get_function(Context::GLOBAL_SCOPE, "func").unwrap();
         assert_eq!(func.body.render(), "x + y");
         assert_eq!(func.parameters, vec!["x".to_string(), "y".to_string()]);
     }

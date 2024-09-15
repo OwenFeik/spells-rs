@@ -99,7 +99,7 @@ pub fn load(at: SaveTarget) -> Res<(Context, String)> {
     let path = normalise_to_path(at)?;
     let text = std::fs::read_to_string(&path)
         .map_err(|e| format!("Error loading from {}: {e}", path.display()))?;
-    let mut context = Context::empty();
+    let mut context = Context::default();
     eval_tome(&text, &mut context)?;
     Ok((context, path.display().to_string()))
 }

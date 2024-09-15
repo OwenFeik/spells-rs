@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     err,
     load::{self, SaveTarget},
     value::Value,
@@ -40,8 +41,8 @@ pub fn exit(args: &[String], state: &mut AppState) -> Res<()> {
 fn save_target(args: &[String], state: &AppState) -> Res<SaveTarget> {
     if let Some(arg) = single_opt_arg(args)? {
         Ok(SaveTarget::from(arg.to_string()))
-    } else if let Some(path) = state.cache.get_variable(load::SAVE_PATH_VAR) {
-        Ok(SaveTarget::from(path.string()?))
+    } else if let Some(path) = state.cache.get_global(load::SAVE_PATH_VAR) {
+        Ok(SaveTarget::from(path.clone().string()?))
     } else {
         Ok(SaveTarget::Generate)
     }
@@ -50,9 +51,11 @@ fn save_target(args: &[String], state: &AppState) -> Res<SaveTarget> {
 fn save(args: &[String], state: &mut AppState) -> Res<()> {
     let path = load::save(save_target(args, state)?, &state.context)?;
     println!("Saved to {path}");
-    state
-        .cache
-        .set_variable(load::SAVE_PATH_VAR, Value::String(path));
+    state.cache.set_variable(
+        Context::GLOBAL_SCOPE,
+        load::SAVE_PATH_VAR,
+        Value::String(path),
+    );
     Ok(())
 }
 
@@ -69,11 +72,14 @@ pub fn load(args: &[String], state: &mut AppState) -> Res<()> {
 
     let (loaded, path) = load::load(target)?;
     println!("Loaded {path}");
-    state
-        .cache
-        .set_variable(load::SAVE_PATH_VAR, Value::String(path));
+    state.cache.set_variable(
+        Context::GLOBAL_SCOPE,
+        load::SAVE_PATH_VAR,
+        Value::String(path),
+    );
 
-    state.context.load_from(loaded)
+    state.context = loaded;
+    Ok(())
 }
 
 fn parse_command(input: &str) -> Res<(String, Vec<String>)> {

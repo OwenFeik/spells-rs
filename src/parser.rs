@@ -304,6 +304,16 @@ pub fn parse_first(input: &TokenList) -> Res<(Ast, &[Token])> {
     Ok((parser.ast, parser.input))
 }
 
+pub fn parse_tome(mut input: TokenList) -> Res<Vec<Ast>> {
+    let mut statements = Vec::new();
+    while !input.is_empty() {
+        let (ast, rest) = parse_first(&input)?;
+        statements.push(ast);
+        input.truncate(input.len().saturating_sub(rest.len()));
+    }
+    Ok(statements)
+}
+
 #[cfg(test)]
 mod test {
     use crate::token::{tokenise, toks_to_list};
