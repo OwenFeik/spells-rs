@@ -620,7 +620,7 @@ mod test {
     #[test]
     fn test_define_assign() {
         check_exprs(
-            "fn() = var = 1 + 2",
+            "fn() := var = 1 + 2",
             vec![
                 Node::Call("fn".into(), Vec::new()),
                 Node::Identifier("var".into()),
@@ -628,7 +628,7 @@ mod test {
                 Node::Value(Value::Natural(2)),
                 Node::Binary(2, Operator::Add, 3),
                 Node::Binary(1, Operator::Assign, 4),
-                Node::Binary(0, Operator::Assign, 5),
+                Node::Binary(0, Operator::Define, 5),
             ],
         )
     }
@@ -681,7 +681,7 @@ mod test {
     #[test]
     fn test_parse_definition() {
         check_exprs(
-            "avg(roll) = (dice(roll) + 1) / 2",
+            "avg(roll) := (dice(roll) + 1) / 2",
             vec![
                 Node::Identifier("roll".into()),
                 Node::Call("avg".into(), vec![0]),
@@ -691,7 +691,7 @@ mod test {
                 Node::Binary(3, Operator::Add, 4),
                 Node::Value(Value::Natural(2)),
                 Node::Binary(5, Operator::Div, 6),
-                Node::Binary(1, Operator::Assign, 7),
+                Node::Binary(1, Operator::Define, 7),
             ],
         )
     }
@@ -699,7 +699,7 @@ mod test {
     #[test]
     fn test_parse_definition_multiple_calls() {
         check_exprs(
-            "func(ina, inb) = (f1(ina, 1) + f2(inb, 2)) * 2",
+            "func(ina, inb) := (f1(ina, 1) + f2(inb, 2)) * 2",
             vec![
                 Node::name("ina"),
                 Node::name("inb"),
@@ -713,7 +713,7 @@ mod test {
                 Node::Binary(5, Operator::Add, 8),
                 Node::Value(Value::Natural(2)),
                 Node::Binary(9, Operator::Mul, 10),
-                Node::Binary(2, Operator::Assign, 11),
+                Node::Binary(2, Operator::Define, 11),
             ],
         )
     }
@@ -773,7 +773,7 @@ mod test {
     #[test]
     fn test_parse_if_in_func() {
         check_exprs(
-            "fn(x, y, z) = if x then y else z",
+            "fn(x, y, z) := if x then y else z",
             vec![
                 Node::name("x"),
                 Node::name("y"),
@@ -783,7 +783,7 @@ mod test {
                 Node::name("y"),
                 Node::name("z"),
                 Node::If(4, 5, Some(6)),
-                Node::Binary(3, Operator::Assign, 7),
+                Node::Binary(3, Operator::Define, 7),
             ],
         )
     }
@@ -808,13 +808,13 @@ mod test {
     #[test]
     fn test_function_returning_list() {
         check_exprs(
-            r#"p() = [print("a")]"#,
+            r#"p() := [print("a")]"#,
             vec![
                 Node::Call("p".into(), Vec::new()),
                 Node::Value(Value::String("a".into())),
                 Node::Call("print".into(), vec![1]),
                 Node::List(vec![2]),
-                Node::Binary(0, Operator::Assign, 3),
+                Node::Binary(0, Operator::Define, 3),
             ],
         )
     }

@@ -21,7 +21,7 @@ pub fn check_argument_count(name: &str, count: usize, args: &[Value]) -> Res<()>
     }
 }
 
-fn define(ctx: &mut EvalCtx, name: &str, args: &[usize], definition: usize) -> Res<Outcome> {
+fn define_func(ctx: &mut EvalCtx, name: &str, args: &[usize], definition: usize) -> Res<Outcome> {
     let mut parameters = Vec::new();
     for &arg in args {
         let Some(Node::Identifier(name)) = ctx.ast.get(arg) else {
@@ -49,8 +49,14 @@ fn assign(ctx: &mut EvalCtx, destination: usize, definition: usize) -> Res<Outco
             ctx.context.set_variable(ctx.scope, name, value.clone());
             Ok(Outcome::new(value))
         }
-        Some(Node::Call(name, args)) => define(ctx, name, args, definition),
         invalid => err(format!("{invalid:?} is not a valid assignment target.")),
+    }
+}
+
+fn define(ctx: &mut EvalCtx, signature: usize, definition: usize) -> Res<Outcome> {
+    match ctx.ast.get(signature) {
+        Some(Node::Call(name, args)) => define_func(ctx, name, args, definition),
+        invalid => err(format!("{invalid:?} is not a valid function signature.")),
     }
 }
 
@@ -89,11 +95,14 @@ fn list(ctx: &mut EvalCtx, values: &[usize]) -> Res<Outcome> {
 fn binary(ctx: &mut EvalCtx, op: Operator, lhs: usize, rhs: usize) -> Res<Outcome> {
     if matches!(op, Operator::Assign) {
         assign(ctx, lhs, rhs)
+    } else if matches!(op, Operator::Define) {
+        define(ctx, lhs, rhs)
     } else {
         let lhs_val = evaluate_node(ctx, lhs)?;
         let rhs_val = evaluate_node(ctx, rhs)?;
         match op {
             Operator::Assign => err("Operator::Assign doesn't match Operator::Assign."),
+            Operator::Define => err("Operator::Define doesn't match Operator::Define."),
             Operator::Discard => Ok(rhs_val),
             Operator::And => lhs_val.and(rhs_val),
             Operator::Or => lhs_val.or(rhs_val),
@@ -352,7 +361,7 @@ mod test {
         let context = &mut Context::empty();
         assert_eq!(eval("a = 1; b = 2", context).unwrap(), Outcome::nat(2));
         dbg!(&context);
-        eval("incr() = a = a + 1; b = b + 1", context).unwrap();
+        eval("incr() := a = a + 1; b = b + 1", context).unwrap();
         dbg!(&context);
         eval("incr()", context).unwrap();
         dbg!(&context);

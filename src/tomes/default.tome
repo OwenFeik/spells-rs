@@ -1,34 +1,34 @@
 # Character stats and modifiers
-_modifier(stat) = floor((stat - 10) / 2)
-STRENGTH = 10; STR() = _modifier(STRENGTH)
-DEXTERITY = 10; DEX() = _modifier(DEXTERITY)
-CONSTITUTION = 10; CON() = _modifier(CONSTITUTION)
-INTELLIGENCE = 10; INT() = _modifier(INTELLIGENCE)
-WISDOM = 10; WIS() = _modifier(WISDOM)
-CHARISMA = 10; CHA() = _modifier(CHARISMA)
+_modifier(stat) := floor((stat - 10) / 2)
+STRENGTH = 10; STR() := _modifier(STRENGTH)
+DEXTERITY = 10; DEX() := _modifier(DEXTERITY)
+CONSTITUTION = 10; CON() := _modifier(CONSTITUTION)
+INTELLIGENCE = 10; INT() := _modifier(INTELLIGENCE)
+WISDOM = 10; WIS() := _modifier(WISDOM)
+CHARISMA = 10; CHA() := _modifier(CHARISMA)
 
 # Character level, calculations for proficiency and expertise
 LEVEL = 1
-PROF() = floor((LEVEL - 1) / 4) + 2
-EXPT() = PROF() * 2
+PROF() := floor((LEVEL - 1) / 4) + 2
+EXPT() := PROF() * 2
 
 # Wealth stored in this list
 _cp = 0; _sp = 0; _gp = 0; _ep = 0; _pp = 0
 _use_electrum = false
-_total_wealth_cp() = _cp + _sp * 10 + _gp * 10 + _ep * 10 + _pp * 10
-gain_cp(cp) = _cp = _cp + cp
-gain_sp(sp) = _sp = _sp + sp
-gain_ep(ep) = _ep = _ep + ep
-gain_gp(gp) = _gp = _gp + gp
-gain_pp(pp) = _pp = _pp + pp
-spend_cp(cp) =
+_total_wealth_cp() := _cp + _sp * 10 + _gp * 10 + _ep * 10 + _pp * 10
+gain_cp(cp) := _cp = _cp + cp
+gain_sp(sp) := _sp = _sp + sp
+gain_ep(ep) := _ep = _ep + ep
+gain_gp(gp) := _gp = _gp + gp
+gain_pp(pp) := _pp = _pp + pp
+spend_cp(cp) :=
     if _cp >= cp then
         _cp = _cp - cp ; true
     else if (_sp > 0 | _ep > 0 | _gp > 0 | _pp > 0) & spend_sp(1) then
         _cp = _cp + 10 ; spend_cp(cp)
     else
         false
-spend_sp(sp) =
+spend_sp(sp) :=
     if _sp >= sp then
         _sp = _sp - sp ; true
     else if _total_wealth_cp() < sp * 10 then
@@ -41,7 +41,7 @@ spend_sp(sp) =
         _sp = _sp + 10 ; spend_sp(sp)
     else
         false
-spend_ep(ep) =
+spend_ep(ep) :=
     if !_use_electrum then
         spend_sp(5 * ep)
     else if _ep >= ep then
@@ -54,7 +54,7 @@ spend_ep(ep) =
         _ep = _ep + 2 ; spend_ep(ep)
     else
         false
-spend_gp(gp) =
+spend_gp(gp) :=
     if _gp >= gp then
         _gp = _gp - gp ; true
     else if _total_wealth_cp() < gp * 10 * 10 then
@@ -65,7 +65,7 @@ spend_gp(gp) =
         _gp = _gp + 10 ; spend_gp(gp)
     else
         false
-spend_pp(pp) =
+spend_pp(pp) :=
     if _pp >= pp then
         _pp = _pp - pp ; true
     else if _total_wealth_cp() < pp * 10 * 10 * 10 then
@@ -74,11 +74,11 @@ spend_pp(pp) =
         _pp = _pp + 1 ; spend_pp(pp)
     else
         false
-wealth() =
+wealth() :=
     print(
         _cp + "cp, " + _sp + "sp, "
         + (if _use_electrum then _ep + "ep, " else "")
         + _gp + "gp, " + _pp + "pp"
     )
 
-roll_avg(roll) = quantity(roll) * (dice(roll) + 1) / 2
+roll_avg(roll) := quantity(roll) * (dice(roll) + 1) / 2

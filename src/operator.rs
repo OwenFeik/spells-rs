@@ -2,6 +2,7 @@
 pub enum Operator {
     Sentinel,
     Assign,
+    Define,
     Discard,
     Add,
     Sub,
@@ -26,6 +27,7 @@ impl Operator {
     // Operators which are produced context-free by the tokeniser.
     // NB it is important that these are ordered longest-to-shortest.
     pub const TOKENS: &'static [Operator] = &[
+        Operator::Define,       // :=
         Operator::Equal,        // ==
         Operator::GreaterEqual, // >=
         Operator::LessEqual,    // <=
@@ -48,25 +50,26 @@ impl Operator {
     pub fn precedence(&self) -> u8 {
         match self {
             Operator::Sentinel => 0,
-            Operator::Discard => 1,
-            Operator::Assign => 2,
-            Operator::And => 3,
-            Operator::Or => 3,
-            Operator::GreaterThan => 4,
-            Operator::LessThan => 4,
-            Operator::GreaterEqual => 4,
-            Operator::LessEqual => 4,
-            Operator::Equal => 4,
-            Operator::Add => 5,
-            Operator::Sub => 5,
-            Operator::Mul => 6,
-            Operator::Div => 6,
-            Operator::Not => 7,
-            Operator::Neg => 7,
-            Operator::Adv => 7,
-            Operator::DisAdv => 7,
-            Operator::Exp => 8,
-            Operator::Keep => 9,
+            Operator::Define => 1,
+            Operator::Discard => 2,
+            Operator::Assign => 3,
+            Operator::And => 4,
+            Operator::Or => 4,
+            Operator::GreaterThan => 5,
+            Operator::LessThan => 5,
+            Operator::GreaterEqual => 5,
+            Operator::LessEqual => 5,
+            Operator::Equal => 5,
+            Operator::Add => 6,
+            Operator::Sub => 6,
+            Operator::Mul => 7,
+            Operator::Div => 7,
+            Operator::Not => 8,
+            Operator::Neg => 8,
+            Operator::Adv => 8,
+            Operator::DisAdv => 8,
+            Operator::Exp => 9,
+            Operator::Keep => 10,
         }
     }
 
@@ -74,6 +77,7 @@ impl Operator {
         match self {
             Operator::Sentinel => false,
             Operator::Assign => false,
+            Operator::Define => false,
             Operator::Discard => true,
             Operator::And => true,
             Operator::Or => true,
@@ -99,6 +103,7 @@ impl Operator {
         match self {
             Operator::Sentinel => false,
             Operator::Assign => true,
+            Operator::Define => true,
             Operator::Discard => true,
             Operator::And => true,
             Operator::Or => true,
@@ -146,10 +151,11 @@ impl Operator {
         }
     }
 
-    pub fn chars(&self) -> &[char] {
+    pub fn chars(&self) -> &'static [char] {
         match self {
             Operator::Sentinel => &['@'],
             Operator::Assign => &['='],
+            Operator::Define => &[':', '='],
             Operator::Discard => &[';'],
             Operator::And => &['&'],
             Operator::Or => &['|'],
