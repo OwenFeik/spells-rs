@@ -1,4 +1,3 @@
-#![feature(fs_try_exists)]
 #![feature(if_let_guard)]
 #![feature(let_chains)]
 

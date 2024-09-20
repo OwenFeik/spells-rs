@@ -74,7 +74,9 @@ fn save_file(title: Option<String>) -> Res<PathBuf> {
         name
     } else {
         let mut i = 0;
-        while std::fs::try_exists(save_dir.join(format!("{}{}", save_name(i), SAVE_EXTENSION)))
+        while save_dir
+            .join(format!("{}{}", save_name(i), SAVE_EXTENSION))
+            .try_exists()
             .map_err(|e| format!("Failed to check if save file exists: {e}"))?
         {
             i += 1;

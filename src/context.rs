@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, process::id, rc::Rc, sync::atomic::AtomicUsize};
+use std::{collections::HashMap, fmt::Display, rc::Rc, sync::atomic::AtomicUsize};
 
 use crate::{
     ast::Ast,
