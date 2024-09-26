@@ -101,6 +101,8 @@ impl Context {
         idx
     }
 
+    /// Return a vector listing the stack of scope indexes from a scope up to
+    /// the global scope.
     fn scope_stack(&self, mut idx: usize) -> Vec<usize> {
         let mut stack = Vec::new();
         while idx != usize::MAX {
@@ -130,7 +132,7 @@ impl Context {
         let name = name.to_string();
         let mut set_scope = scope;
         for idx in self.scope_stack(scope) {
-            if let Some(scope) = self.scopes.get_mut(scope) {
+            if let Some(scope) = self.scopes.get_mut(idx) {
                 if scope.objects.contains_key(&name) {
                     set_scope = idx;
                     break;
@@ -226,5 +228,23 @@ mod test {
         let func = context.get_function(Context::GLOBAL_SCOPE, "func").unwrap();
         assert_eq!(func.body.render(), "x + y");
         assert_eq!(func.parameters, vec!["x".to_string(), "y".to_string()]);
+    }
+
+    #[test]
+    fn test_global_assignment() {
+        // Test that setting a variable that already exists in a parent scope
+        // updates that variable.
+        let mut context = Context::empty();
+        context.set_variable(Context::GLOBAL_SCOPE, "var", Value::Natural(42));
+        assert_eq!(
+            context.get_variable(Context::GLOBAL_SCOPE, "var"),
+            Some(&Value::Natural(42))
+        );
+        let child = context.child_scope(Context::GLOBAL_SCOPE);
+        context.set_variable(child, "var", Value::Natural(2));
+        assert_eq!(
+            context.get_variable(Context::GLOBAL_SCOPE, "var"),
+            Some(&Value::Natural(2))
+        );
     }
 }

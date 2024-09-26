@@ -131,6 +131,8 @@ pub fn call(name: &str, args: Vec<Value>) -> Res<Outcome> {
 
 #[cfg(test)]
 mod test {
+    use crate::eval_tome;
+
     use super::*;
 
     #[test]
