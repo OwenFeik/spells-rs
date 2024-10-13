@@ -103,6 +103,10 @@ impl<'a> Parser<'a> {
                 }
                 "true" => Ok(self.push_operand(Node::Value(Value::Bool(true)))),
                 "false" => Ok(self.push_operand(Node::Value(Value::Bool(false)))),
+                "import" => {
+                    let name = self.in_scope(Self::expr)?;
+                    Ok(self.push_operand(Node::Import(name)))
+                }
                 _ => {
                     if self.next_is(Tok::ParenOpen) {
                         self.call(name.clone())

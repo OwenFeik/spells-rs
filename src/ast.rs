@@ -9,6 +9,7 @@ pub enum Node {
     Binary(usize, Operator, usize),
     Unary(usize, Operator),
     If(usize, usize, Option<usize>), // Condition, block if true, optional else.
+    Import(usize),
 }
 
 impl Node {
@@ -46,6 +47,10 @@ impl Node {
                     .and_then(|n| from.get(n))
                     .and_then(|n| n.copy(from, to));
                 Some(to.add(Self::If(cond, expr, fail)))
+            }
+            &Node::Import(name) => {
+                let name = from.get(name)?.copy(from, to)?;
+                Some(to.add(Node::Import(name)))
             }
         }
     }
@@ -154,6 +159,7 @@ impl Ast {
                         format!("if ({}) then ({})", self._render(cond), self._render(expr))
                     }
                 }
+                &Node::Import(name) => format!("import {}", self._render(name)),
             }
         } else {
             "ERROR".to_string()

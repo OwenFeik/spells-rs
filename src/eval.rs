@@ -1,4 +1,4 @@
-use crate::{context::Context, err, operator::Operator, outcome::Outcome, Res};
+use crate::{context::Context, err, eval_tome, operator::Operator, outcome::Outcome, Res};
 
 use super::{
     ast::{Ast, Node},
@@ -148,6 +148,18 @@ fn condition(ctx: &mut EvalCtx, cond: usize, block: usize, fail: Option<usize>) 
     }
 }
 
+fn import(ctx: &mut EvalCtx, name: usize) -> Res<Outcome> {
+    let outcome = evaluate_node(ctx, name)?;
+    let name = outcome.value.string()?;
+    match std::fs::read_to_string(&name) {
+        Ok(input) => {
+            eval_tome(&input, ctx.context)?;
+            Ok(Outcome::empty())
+        }
+        Err(e) => Err(format!("Failed to read {name}: {e}")),
+    }
+}
+
 fn evaluate_node(ctx: &mut EvalCtx, index: usize) -> Res<Outcome> {
     if let Some(expr) = ctx.ast.get(index) {
         match expr {
@@ -158,6 +170,7 @@ fn evaluate_node(ctx: &mut EvalCtx, index: usize) -> Res<Outcome> {
             &Node::Unary(arg, op) => unary(ctx, op, arg),
             Node::Call(name, args) => call(ctx, name, args),
             &Node::If(cond, expr, fail) => condition(ctx, cond, expr, fail),
+            &Node::Import(name) => import(ctx, name),
         }
     } else {
         err("Attempted to evaluate expression which did not exist.")

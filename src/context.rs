@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, rc::Rc, sync::atomic::AtomicUsize};
+use std::{collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::{
     ast::Ast,
@@ -14,22 +14,14 @@ struct Function {
     name: String,
     body: Ast,
     parameters: Vec<String>,
-
-    /// Unique ID of this function. This keeps track of declaration order, which
-    /// is important because when we are saving defined functions, we need to
-    /// ensure that all functions used within a function are available in the
-    /// scope the function is evaluated in.
-    id: usize,
 }
 
 impl Function {
     fn new<S: ToString>(name: S, body: Ast, parameters: Vec<String>) -> Self {
-        static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
         Self {
             name: name.to_string(),
             body,
             parameters,
-            id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         }
     }
 }
