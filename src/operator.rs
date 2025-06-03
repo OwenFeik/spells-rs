@@ -21,6 +21,7 @@ pub enum Operator {
     And,
     Or,
     Not,
+    Member,
 }
 
 impl Operator {
@@ -43,6 +44,7 @@ impl Operator {
         Operator::And,          // &
         Operator::Or,           // |
         Operator::Not,          // !
+        Operator::Member,       // .
     ];
 
     pub const ROLL_SUFFIX_TOKENS: &'static [Operator] = &[Self::Keep, Self::Adv, Self::DisAdv];
@@ -70,6 +72,7 @@ impl Operator {
             Operator::DisAdv => 8,
             Operator::Exp => 9,
             Operator::Keep => 10,
+            Operator::Member => 11,
         }
     }
 
@@ -96,6 +99,7 @@ impl Operator {
             Operator::LessThan => true,
             Operator::GreaterEqual => true,
             Operator::LessEqual => true,
+            Operator::Member => true,
         }
     }
 
@@ -122,6 +126,7 @@ impl Operator {
             Operator::LessThan => true,
             Operator::GreaterEqual => true,
             Operator::LessEqual => true,
+            Operator::Member => true,
         }
     }
 
@@ -174,14 +179,11 @@ impl Operator {
             Operator::LessThan => &['<'],
             Operator::GreaterEqual => &['>', '='],
             Operator::LessEqual => &['<', '='],
+            Operator::Member => &['.'],
         }
     }
 
     pub fn str(&self) -> String {
-        let mut s = String::new();
-        for &c in self.chars() {
-            s.push(c);
-        }
-        s
+        self.chars().iter().collect()
     }
 }

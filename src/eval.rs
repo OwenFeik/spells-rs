@@ -97,12 +97,14 @@ fn binary(ctx: &mut EvalCtx, op: Operator, lhs: usize, rhs: usize) -> Res<Outcom
         assign(ctx, lhs, rhs)
     } else if matches!(op, Operator::Define) {
         define(ctx, lhs, rhs)
+    } else if matches!(op, Operator::Member) {
     } else {
         let lhs_val = evaluate_node(ctx, lhs)?;
         let rhs_val = evaluate_node(ctx, rhs)?;
         match op {
             Operator::Assign => err("Operator::Assign doesn't match Operator::Assign."),
             Operator::Define => err("Operator::Define doesn't match Operator::Define."),
+            Operator::Member => err("Operator::Member doesn't match Operator::Member."),
             Operator::Discard => Ok(rhs_val),
             Operator::And => lhs_val.and(rhs_val),
             Operator::Or => lhs_val.or(rhs_val),

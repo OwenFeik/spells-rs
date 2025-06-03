@@ -1,5 +1,7 @@
 use std::{convert::TryInto, fmt::Display};
 
+use std::collections::HashMap;
+
 use crate::{
     err,
     roll::{Roll, RollOutcome},
@@ -16,6 +18,7 @@ pub enum Value {
     Rolls(Vec<u64>),
     List(Vec<Value>),
     String(String),
+    Object(HashMap<Box<str>, Value>),
     Empty,
 }
 
@@ -47,6 +50,7 @@ impl Value {
             Self::Bool(v) => Err(format!("{v} cannot be interpreted as decimal.")),
             Self::String(_) => err("String cannot be interpreted as decimal."),
             Self::Empty => err("Empty cannot be interpreted as decimal."),
+            Self::Object(_) => err("Object canot be interpreted as decimal."),
         }
     }
 
@@ -67,6 +71,7 @@ impl Value {
             Self::Bool(v) => Err(format!("{v} cannot be interpreted as natural.")),
             Self::String(_) => err("String cannot be interpreted as natural."),
             Self::Empty => err("Empty cannot be interpreted as natural."),
+            Self::Object(_) => err("Object canot be interpreted as natural."),
         }
     }
 
@@ -81,6 +86,7 @@ impl Value {
             Self::List(_) => err("List cannot be interpreted as rolls."),
             Self::String(_) => err("String cannot be interpreted as rolls."),
             Self::Empty => err("Empty cannot be interpreted as rolls."),
+            Self::Object(_) => err("Object canot be interpreted as rolls."),
         }
     }
 
@@ -190,6 +196,12 @@ impl Display for Value {
                 )
             }
             Value::String(s) => write!(f, r#""{}""#, s.replace('"', "\\\"")),
+            Value::Object(values) => {
+                let mut entries: Vec<String> =
+                    values.iter().map(|(k, v)| format!("{k}: {v}")).collect();
+                entries.sort();
+                write!(f, "{{ {} }}", entries.join(", "))
+            }
             Value::Empty => write!(f, "()"),
         }
     }
